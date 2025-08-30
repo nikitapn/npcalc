@@ -3,9 +3,9 @@
 set -e
 
 cmake -B .build_local -S . -DOPT_NPRPC_SKIP_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-# cmake --build .build_local
-cmake --build .build_local --target=nscalc
-cmake --build .build_local --target=proxy_client
+cmake --build .build_local
+# cmake --build .build_local --target=nscalc
+# cmake --build .build_local --target=proxy_client
 
 CMD=".build_local/release/nscalc \
     --hostname archvm.lan \
@@ -23,8 +23,8 @@ if [ "$1" == "debug" ]; then
 fi
 
 $CMD &
-PID=$!
-echo "NSCalc is running with PID $PID"
+SERVER_PID=$!
+echo "NSCalc is running with PID $SERVER_PID"
 
 # ./.build_local/debug/proxy_client &
 # PROXY_PID=$!
@@ -32,14 +32,15 @@ echo "NSCalc is running with PID $PID"
 
 trap ctrl_c INT
 ctrl_c() {
-    echo "Stopping NSCalc with PID $PID..."
-    kill $PID
+    echo "Stopping NSCalc with PID $SERVER_PID..."
+    # TODO: Fix graceful shutdown of nscalc: some threads hang
+    kill -SIGKILL $SERVER_PID
     # echo "Stopping Proxy client with PID $PROXY_PID..."
     # kill $PROXY_PID
     # echo "Exiting..."
     exit 0
 }
 
-wait $PID
+wait $SERVER_PID
+echo "nscalc have stopped."
 # wait $PROXY_PID
-echo "NSCalc and Proxy client have stopped."
