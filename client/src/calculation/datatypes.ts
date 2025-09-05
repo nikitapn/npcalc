@@ -179,7 +179,7 @@ export class Solution extends TableItemWithOwnership {
 		try {
 			this.set_id(await global.user_data.reg_user.AddSolution(
 				this.get_name(), 
-				this.elements.map(x => x.mx_value))
+				Float64Array.from(this.elements.map(x => x.mx_value)))
 				);
 		} catch (e) { console.log(e); }
 	}

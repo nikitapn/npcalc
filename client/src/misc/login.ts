@@ -22,7 +22,7 @@ export function set_user_data(ud: nscalc.UserData | null): void {
 	}
 	
 	global.user_data.user = ud.name;
-	global.user_data.reg_user = narrow(new ObjectProxy(ud.db), nscalc.RegisteredUser);
+	global.user_data.reg_user = narrow(ud.db, nscalc.RegisteredUser);
 	
 	if (global.user_data.reg_user === null) {
 		console.log("narrowing failed");
