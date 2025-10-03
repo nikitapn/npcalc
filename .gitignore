@@ -6,3 +6,6 @@ runtime
 database/my.sql
 # I've added these certs to my Windows so it should be ignored
 certs/
+/docs/calculations/*
+!/docs/calculations/formula.tex
+!/docs/calculations/formula.pdf

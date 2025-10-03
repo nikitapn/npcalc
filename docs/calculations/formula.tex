@@ -1,0 +1,120 @@
+\documentclass[12pt]{article}
+\usepackage {amsmath}
+
+\title {Fertilizer calculation}
+\author {Nikita Pennie}
+
+\begin{document}
+\maketitle
+\section {The equation}
+
+The following equation is used to calculate the optimal fertilizer mix for a given set of nutrients and fertilizers. The goal is to minimize difference between required and provided nutrients, while also minimizing cost of fertilizers used. Each nutrient can be assigned an importance factor to prioritize certain nutrients over others.
+
+\begin{table}[ht!]
+\def\arraystretch{1.5}
+\centering
+\begin{tabular}{|l|l|}
+\hline
+N & number of nutrients \\ \hline
+M & number of fertilizers \\ \hline
+$K_i$ & importance of nutrient i \\ \hline
+$E_i$ & required amount of nutrient i (ppm) \\ \hline
+$C_j$ & cost of fertilizer j \\ \hline
+$x_j$ & amount of fertilizer j to use \\ \hline
+$a_{ij}$ & percentage of nutrient i in fertilizer j \\ \hline
+$\quad m = \frac{1}{1000}$ & scaling factor to get cost in thousands \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{equation}
+\begin{aligned}
+\min_{x} \quad \sum_{i=1}^{N}{K_i*(E_i-\sum_{j=1}^{M}{a_{ij}*x_j})^2}+m*(\sum_{j=1}^{M}{C_j*x_j}) \\
+\end{aligned}
+\end{equation}
+
+Rewriting the equation in a more compact matrix form:
+\begin{equation}
+\begin{aligned}
+\min_{x} \quad (E-Ax)^T K (E-Ax) + m(C^T x) \\
+\end{aligned}
+\end{equation}
+
+
+Expanding the matrix equation:
+\begin{equation}
+\begin{aligned}
+\min_{x} \quad E^T K E - 2 E^T K A x + x^T A^T K A x + m C^T x \\ 
+\end{aligned}
+\end{equation}
+
+Taking the gradient with respect to x and setting it to zero to find the optimal solution:
+\begin{equation}
+\begin{aligned}
+\frac{d}{dx} \left( E^T K E - 2 E^T K A x + x^T A^T K A x + m C^T x \right) = 0 \\
+-2 A^T K E + 2 A^T K A x + m C = 0 \\
+2 A^T K A x = 2 A^T K E - m C \\
+A^T K A x = A^T K E - \frac{m}{2} C \\
+\end{aligned}
+\end{equation}
+
+Note: In the actual implementation, the cost coefficient $m$ is applied directly without the factor of $\frac{1}{2}$ to the right-hand side vector during matrix construction, resulting in the system:
+\begin{equation}
+A^T K A x = A^T K E - m C
+\end{equation}
+
+\section {Explanation of the equation}
+The equation consists of two main parts: the first part minimizes the weighted squared difference between the required and provided nutrients, while the second part minimizes the cost of fertilizers used. The importance matrix K allows for prioritization of certain nutrients over others, ensuring that critical nutrients are met even if it means using more expensive fertilizers. The scaling factor m is used to balance the two parts of the equation, ensuring that neither part dominates the optimization process.
+
+\subsection{Computation of importance weights}
+The diagonal elements of the importance matrix K are computed as:
+\begin{equation}
+K_i = \frac{\ln(r_i)}{E_i}
+\end{equation}
+where $r_i$ is the user-defined ratio (importance) for nutrient $i$. This logarithmic scaling ensures that nutrients with higher importance ratios receive exponentially more weight in the optimization, while normalizing by the required amount $E_i$ prevents nutrients with large absolute values from dominating the solution.
+
+Variables used in the equation:
+\begin{table}[ht!]
+\def\arraystretch{1.5}
+\centering
+\begin{tabular}{|l|l|}
+\hline
+$E$ & vector of required nutrients (size N) \\ \hline
+$A$ & matrix of nutrient percentages in fertilizers (size NxM) \\ \hline
+$K$ & diagonal matrix of nutrient importance (size NxN) \\ \hline
+$C$ & vector of fertilizer costs (size M) \\ \hline
+$x$ & vector of fertilizer amounts to use (size M) \\ \hline
+\end{tabular}
+\end{table}
+
+\section{Implementation Details}
+
+The implementation directly constructs the coefficient matrix $A^T K A$ and the right-hand side vector $A^T K E - m C$ without explicitly forming the intermediate matrices. This approach is more computationally efficient.
+
+\subsection{Matrix Construction}
+The coefficient matrix elements are computed as:
+\begin{equation}
+(A^T K A)_{ij} = \sum_{k=1}^{N} K_k \cdot a_{ki} \cdot a_{kj}
+\end{equation}
+
+The right-hand side vector is computed as:
+\begin{equation}
+b_j = \sum_{k=1}^{N} K_k \cdot E_k \cdot a_{kj} - m \cdot C_j
+\end{equation}
+
+\subsection{Solution Method}
+The system $A^T K A x = b$ is solved using Cholesky decomposition, which is efficient for symmetric positive-definite matrices. The algorithm:
+\begin{enumerate}
+\item Decomposes $A^T K A = L L^T$ where $L$ is lower triangular
+\item Solves $L y = b$ for $y$ using forward substitution
+\item Solves $L^T x = y$ for $x$ using backward substitution
+\end{enumerate}
+
+\subsection{Rank Analysis}
+Before solving, the implementation checks the rank of the coefficient matrix and the augmented matrix to determine:
+\begin{itemize}
+\item If $\text{rank}(A^T K A) = \text{rank}([A^T K A | b])$ and equals the number of variables, a unique solution exists
+\item If ranks are equal but less than the number of variables, infinite solutions exist
+\item If ranks differ, no solution exists for the given configuration
+\end{itemize}
+
+\end{document}
