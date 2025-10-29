@@ -2,6 +2,7 @@ const path = require('path');
 const webpack = require('webpack');
 const TerserPlugin = require('terser-webpack-plugin');
 const sveltePreprocess = require('svelte-preprocess');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = env => {
 	const config = {
@@ -59,7 +60,9 @@ module.exports = env => {
 				{ enforce: "pre", test: /\.js$/, loader: "source-map-loader" },
 				{ test: /\.css$/, use: ['style-loader', 'css-loader'] },
 				{ test: /\.exec\/calc.js/, use: ['script-loader'] },
-				{ test: /\.glsl$/, loader: 'webpack-glsl-loader' },
+				{ test: /\.vert$/, loader: 'webpack-glsl-loader' },
+				{ test: /\.frag$/, loader: 'webpack-glsl-loader' },
+				{ test: /\.json$/, type: 'json' }, // Import JSON directly
 			]
 		},
 		resolve: {
@@ -74,6 +77,14 @@ module.exports = env => {
 			new webpack.DefinePlugin({
 				"process.env.NODE_ENV": JSON.stringify(config.production ? 'production' : 'development'),
 				"process.env.server": env.server ? true : false
+			}),
+			new CopyPlugin({
+				patterns: [
+					{
+						from: path.resolve(__dirname, 'src/mouse/assets/atlas.png'),
+						to: path.resolve(__dirname, 'public/img/atlas.png')
+					}
+				]
 			})
 		]
 	};
