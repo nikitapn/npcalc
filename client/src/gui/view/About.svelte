@@ -35,8 +35,6 @@ li {
     <p>Go to the 'SOLUTIONS'; Each row of the table here starts with an icon that looks like a gear; click on it!</p>
     <li>Can I add my own nutrition formula and fertilizer?</li>
     <p>Yes, you can! To do that, please register your hydrosoft account — it's completely free.</p>
-    <li>Some of my calculated weights of fertilizers have negative values. What should I do?</li>
-    <p>Rethink your fertilizers participating in the calculation. The calculator solves the problem using a straightforward analytical method that does allow negative values as a result of a computation. Typically, this happens if your fertilizer set is redefined, if you know what I mean.</p>
     <li>What are those sliders next to each element on the 'CALCULATOR' page?</li>
     <p>The sliders represent the significants of each element. It makes sense to play with them if you are missing some fertilizers to make a complete solution; otherwise, there is no reason to touch them.</p>
   </ul>

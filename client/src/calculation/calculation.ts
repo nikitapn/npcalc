@@ -455,7 +455,8 @@ export class Calculation extends TableItem {
 
       if (rank_A === rank_AExt) {
         if (rank_A === x_n) {
-          this.temp_X = this.solve_cholesky(A, B);
+          // Replace unconstrained cholesky solve with active-set nonnegativity solver
+          this.temp_X = this.solve_qp_nonneg(A, B);
         } else {
           this.result = "infinite number of results...";
           this.result_ferts = [];
@@ -562,41 +563,6 @@ export class Calculation extends TableItem {
     else this.calc_mode_2(volume_changed);
   }
 
-  /*
-  private solve_givens(A: Matrix, B: number[]): number[] {
-    let [m, n] = A.dim; m;
-    let X = new Array<number>(n);
-
-    for (let k = 0; k < n; ++k) {
-      for (let i = k + 1; i < n; ++i) {
-        let den = Math.sqrt(A.g(k, k) * A.g(k, k) + A.g(i, k) * A.g(i, k));
-        let c = A.g(k, k) / den, s = A.g(i, k) / den;
-
-        for (let j = k; j < n; ++j) {
-          let old_value_a_ij = A.g(i, j), old_value_a_kj = A.g(k, j);
-
-          A.s(k, j, c * old_value_a_kj + s * old_value_a_ij);
-          A.s(i, j, c * old_value_a_ij - s * old_value_a_kj)
-        }
-
-        let old_value_a_kb = B[k], old_value_a_ib = B[i];
-
-        B[k] = c * old_value_a_kb + s * old_value_a_ib;
-        B[i] = c * old_value_a_ib - s * old_value_a_kb;
-      }
-    }
-
-    X[n - 1] = B[n - 1] / A.g(n - 1, n - 1);
-    for (let i = n - 1; i >= 0; --i) {
-      let sum = 0;
-      for (let j = n - 1; j > i; --j) sum += X[j] * A.g(i, j);
-      X[i] = (B[i] - sum) / A.g(i, i);
-    }
-
-    return X;
-  }
-  */
-
   private solve_cholesky(A: Matrix, B: number[]): number[] {
     let [m, n] = A.dim; m;
 
@@ -634,5 +600,99 @@ export class Calculation extends TableItem {
     }
 
     return X;
+  }
+
+  /**
+   * Active-set solver for Ax = B with x >= 0.
+   * - A must be symmetric and (preferably) positive-definite.
+   * - If the unconstrained solution is nonnegative, returns it immediately.
+   * - Otherwise iteratively fixes negative components to zero (active-set)
+   *   and resolves the reduced system.
+   */
+  private solve_qp_nonneg(A: Matrix, B: number[]): number[] {
+    const n = B.length;
+    const EPS_NEG = 1e-12;
+    const MAX_ITER = Math.max(10, n);
+    // active[i] === true means variable i is fixed to zero
+    let active = new Array<boolean>(n).fill(false);
+    let x = new Array<number>(n).fill(0.0);
+
+    for (let iter = 0; iter < MAX_ITER; ++iter) {
+      // build index list of free variables
+      const freeIdx: number[] = [];
+      for (let i = 0; i < n; ++i) if (!active[i]) freeIdx.push(i);
+
+      if (freeIdx.length === 0) {
+        // all fixed to zero
+        return x;
+      }
+
+      // build reduced A_free and B_free
+      const m = freeIdx.length;
+      const A_free = Matrix.create(m, m);
+      const B_free = new Array<number>(m).fill(0.0);
+      for (let i = 0; i < m; ++i) {
+        B_free[i] = B[freeIdx[i]];
+        for (let j = 0; j < m; ++j) {
+          A_free.s(i, j, A.g(freeIdx[i], freeIdx[j]));
+        }
+      }
+
+      // numeric safety: if diagonal elements are tiny or matrix near-singular add tiny ridge
+      let need_reg = false;
+      for (let i = 0; i < m; ++i) {
+        if (Math.abs(A_free.g(i, i)) < 1e-14) { need_reg = true; break; }
+      }
+      if (need_reg) {
+        for (let i = 0; i < m; ++i) {
+          A_free.s(i, i, A_free.g(i, i) + 1e-9);
+        }
+      }
+
+      // solve reduced system
+      let x_free: number[];
+      try {
+        x_free = this.solve_cholesky(A_free, B_free);
+      } catch (e) {
+        // fallback: small regularization and try again
+        for (let i = 0; i < m; ++i) A_free.s(i, i, A_free.g(i, i) + 1e-8);
+        x_free = this.solve_cholesky(A_free, B_free);
+      }
+
+      // fill solution and check negatives
+      let any_negative = false;
+      for (let k = 0; k < m; ++k) {
+        const idx = freeIdx[k];
+        x[idx] = x_free[k];
+        if (x[idx] < -EPS_NEG) {
+          any_negative = true;
+        }
+      }
+
+      // if no negative free variables — we are done
+      if (!any_negative) {
+        // clamp tiny negatives to zero for numerical stability
+        for (let i = 0; i < n; ++i) if (x[i] < 0 && x[i] > -1e-10) x[i] = 0;
+        return x;
+      }
+
+      // otherwise mark negative free variables as active (fixed to zero) and iterate
+      let fixed_this_round = false;
+      for (let k = 0; k < m; ++k) {
+        const idx = freeIdx[k];
+        if (x[idx] < 0) {
+          active[idx] = true;
+          x[idx] = 0.0;
+          fixed_this_round = true;
+        }
+      }
+
+      // if nothing was fixed (shouldn't happen) break to avoid infinite loop
+      if (!fixed_this_round) break;
+    }
+
+    // final fallback: clamp negatives to zero (should be rare)
+    for (let i = 0; i < n; ++i) if (x[i] < 0) x[i] = 0;
+    return x;
   }
 }
