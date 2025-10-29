@@ -1,128 +1,169 @@
-// Copyright (c) 2022 nikitapnn1@gmail.com
+// Copyright (c) 2022-2025 nikitapnn1@gmail.com
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
-import { vec2, vec3 } from 'gl-matrix'
-import { the_canvas, init as init_gl } from 'mouse/gl';
-import { Renderer } from 'mouse/renderer'
+import { vec2 } from 'gl-matrix'
+import { the_canvas, init as init_gl, reinit as reinit_gl, screen_to_normalized_coordinates, getCanvasSize } from 'mouse/gl';
+import { init_particle_renderer, the_particle_renderer } from 'mouse/renderer';
 import { Footstep, footsteps } from 'mouse/footstep';
 import { firework_system } from 'mouse/fireworks';
 import { init as init_primitives } from 'mouse/primitives'
-import { init as init_camera, camera } from 'mouse/camera';
-import { init as init_assets } from 'mouse/assets';
 import { init as init_shaders} from 'mouse/shaders';
 import { Timer } from 'mouse/timer'
 import { calculator } from 'rpc/rpc';
 
-
-export let renderer: Renderer = null;
-
 interface Color {
-	x: number;
-	y: number;
-	z: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 let footstep_color: Color = null;
 let timer: Timer;
+let is_initialized = false;
 
-export const init = (canvas: HTMLCanvasElement) => {
-	init_gl(canvas);
-	init_shaders();
-	init_primitives();
-	init_camera();
-	init_assets();
+export const init = async (canvas: HTMLCanvasElement) => {
+  init_gl(canvas);
+  init_shaders();
+  init_primitives();
+  await init_particle_renderer(the_canvas.width, the_canvas.height);
 
-	footstep_color = { x: Math.random(), y: Math.random(), z: Math.random() };
+  footstep_color = { x: Math.random(), y: Math.random(), z: Math.random() };
+  timer = new Timer();
+  document.addEventListener("mousemove", on_mouse_move);
 
-	renderer = new Renderer(
-		the_canvas.width, 
-		the_canvas.height, 
-		footsteps, 
-		firework_system.fireworks
-	);
+  // Handle WebGL context loss (browser can trigger this)
+  canvas.addEventListener('webglcontextlost', handleContextLost, false);
+  canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
 
-	timer = new Timer();
+  is_initialized = true;
+  the_loop();
+}
 
-	document.addEventListener("mousemove", on_mouse_move);
+const handleContextLost = (event: Event) => {
+  console.warn('WebGL context lost!');
+  event.preventDefault(); // Prevent default behavior
+  is_initialized = false;
+};
 
-	the_loop();
+const handleContextRestored = async (event: Event) => {
+  console.log('WebGL context restored, reinitializing...');
+  const size = getCanvasSize();
+  await handleResize(size.width, size.height);
+  is_initialized = true;
+};
+
+export const handleResize = async (width: number, height: number) => {
+  if (!is_initialized) {
+    console.warn('Cannot resize before initialization');
+    return;
+  }
+
+  console.log(`Handling canvas resize: ${width}x${height}`);
+
+  // Update canvas size
+  the_canvas.width = width;
+  the_canvas.height = height;
+  
+  // Reinitialize WebGL context (it's lost when canvas resizes)
+  reinit_gl();
+
+  // Reinitialize all WebGL resources
+  init_shaders();
+  init_primitives();
+  await init_particle_renderer(width, height);
+
+  console.log('Resize complete');
 }
 
 let t = 0;
 const the_loop = (): void => {
-	timer.update();
+  if (!is_initialized) {
+    // Context lost, wait for restoration
+    setTimeout(the_loop, 100);
+    return;
+  }
 
-	t += timer.dt;
+  timer.update();
 
-	firework_system.update(timer);
-	processFootsteps(timer.dt);	
+  t += timer.dt;
 
-	renderer.render(camera);
-	
-	if (!firework_system.stop) {
-		requestAnimationFrame(the_loop);
-	} else {
-		setTimeout(the_loop, 100);
-	}
+  firework_system.update(timer);
+  processFootsteps(timer.dt);
+  the_particle_renderer.render();
+
+  if (!firework_system.stop) {
+    requestAnimationFrame(the_loop);
+  } else {
+    setTimeout(the_loop, 100);
+  }
 }
 
 let last_time = 0;
 const processFootsteps = (dt: number): void => {
-	last_time += dt;
-	if (last_time < 0.028) return;
-	last_time = 0;
-	let k = footsteps.length;
-	for (let i = 0; i < k; ++i) {
-		if (--footsteps[i].ttl == 0) {
-			if (k <= footsteps.length) {
-				[ footsteps[i], footsteps[k - 1] ] =  [ footsteps[k - 1], footsteps[i] ];
-			}
-			k--;
-		}
-	}
+  last_time += dt;
+  if (last_time < 0.028) return;
+  last_time = 0;
+  let k = footsteps.length;
+  for (let i = 0; i < k; ++i) {
+    if (--footsteps[i].ttl == 0) {
+      if (k <= footsteps.length) {
+        [ footsteps[i], footsteps[k - 1] ] =  [ footsteps[k - 1], footsteps[i] ];
+      }
+      k--;
+    }
+  }
 
-	if (k != footsteps.length)
-		footsteps.splice(k);
+  if (k != footsteps.length)
+    footsteps.splice(k);
 }
 
 let cnt = 0;
 let prev_pos: vec2 = [0, 0];
 let footstep_cnt = 0;
 const on_mouse_move = (ev: MouseEvent) => {
-	if (cnt++ === 0) {
-		prev_pos = camera.screen_to_xy_plane(ev.clientX, ev.clientY);
-		return;
-	}
+  let pos = vec2.fromValues(ev.clientX, ev.clientY);
 
-	if (cnt % 16 !== 0) return;
+  if (cnt++ === 0) {
+    prev_pos = pos;
+    return;
+  }
 
-	let pos = camera.screen_to_xy_plane(ev.clientX, ev.clientY);
-	let dir = vec2.fromValues(pos[0] - prev_pos[0], pos[1] - prev_pos[1]);
+  if (cnt % 16 !== 0)
+    return;
 
-	let distance = vec2.distance(prev_pos, pos);
-	if (distance >= 128) {
-		vec2.normalize(dir, dir);
-		dir[0] *= 64;
-		dir[1] *= 64;
-		while (distance - 64 > 0) {
-			distance -= 64;
-			vec2.add(prev_pos, prev_pos, dir);
-			// footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, prev_pos, dir));
-			calculator.SendFootstep({ 
-				color: footstep_color,
-				idx: footstep_cnt++,
-				pos: {x: prev_pos[0], y: prev_pos[1]}, 
-				dir: {x: dir[0], y: dir[1]}
-			});
-		}
-	} else{
-		// footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, pos, dir));
-		calculator.SendFootstep({ 
-			color: footstep_color, 
-			idx: footstep_cnt++,
-			pos: {x: pos[0], y: pos[1]}, 
-			dir: {x: dir[0], y: dir[1]}
-		});
-	}
-	prev_pos = pos;
+  let dir = vec2.fromValues(pos[0] - prev_pos[0], pos[1] - prev_pos[1]);
+  let distance = vec2.distance(prev_pos, pos);
+
+  if (distance >= 128) {
+    vec2.normalize(dir, dir);
+    dir[0] *= 64;
+    dir[1] *= 64;
+    while (distance - 64 > 0) {
+      distance -= 64;
+      vec2.add(prev_pos, prev_pos, dir);
+
+      // Normalize prev_pos to [0, 1] range to screen coordinates to ensure consistency across different resolutions
+      let npos = screen_to_normalized_coordinates(prev_pos[0], prev_pos[1]);
+
+      footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, prev_pos, dir));
+      calculator.SendFootstep({
+        color: footstep_color,
+        idx: footstep_cnt++,
+        pos: {x: npos[0], y: npos[1]},
+        dir: {x: dir[0], y: dir[1]}
+      });
+    }
+  } else{
+    // Normalize prev_pos to [0, 1] range to screen coordinates to ensure consistency across different resolutions
+    let npos = screen_to_normalized_coordinates(pos[0], pos[1]);
+
+    footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, npos, dir));
+    calculator.SendFootstep({
+      color: footstep_color,
+      idx: footstep_cnt++,
+      pos: {x: npos[0], y: npos[1]},
+      dir: {x: dir[0], y: dir[1]}
+    });
+  }
+  prev_pos = pos;
 }

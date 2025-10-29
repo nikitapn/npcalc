@@ -8,21 +8,45 @@
   import Banner from 'gui/misc/Banner.svelte'
   import Footer from 'gui/misc/Footer.svelte'
   import { fade } from 'svelte/transition'
-  import { onMount } from 'svelte'
-  import { init as init_mouse } from 'mouse/main'
+  import { onMount, onDestroy } from 'svelte'
+  import { init as init_mouse, handleResize } from 'mouse/main'
 
   export let content: HTMLDivElement;
 
   let user_made_a_bad_decision = false;
 
   let canvas: HTMLCanvasElement;
+  let resizeTimeout: number;
+
+  const updateCanvasSize = () => {
+    const newWidth = window.innerWidth;
+    const newHeight = window.innerHeight;
+
+    // Debounce resize to avoid excessive reinitialization
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
+
+    resizeTimeout = window.setTimeout(async () => {
+      await handleResize(newWidth, newHeight);
+    }, 250); // Wait 250ms after last resize event
+  };
 
   onMount(() => {
-    canvas.width = document.body.clientWidth;
-    canvas.height = document.body.clientHeight;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
     init_mouse(canvas);
+
+    // Listen for window resize
+    window.addEventListener('resize', updateCanvasSize);
   });
 
+  onDestroy(() => {
+    window.removeEventListener('resize', updateCanvasSize);
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
+  });
   
 </script>
 

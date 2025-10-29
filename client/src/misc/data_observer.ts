@@ -1,4 +1,4 @@
-// Copyright (c) 2022 nikitapnn1@gmail.com
+// Copyright (c) 2022-2025 nikitapnn1@gmail.com
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
 import * as NPRPC from 'nprpc';
@@ -7,8 +7,7 @@ import * as nscalc from 'rpc/nscalc'
 import { alarms, Alarm } from 'misc/alarm'
 import { Footstep, footsteps } from 'mouse/footstep';
 
-import { renderer } from 'mouse/main';
-import { camera } from 'mouse/camera';
+import { the_particle_renderer } from 'mouse/renderer';
 
 export class DataObserverImpl extends nscalc._IDataObserver_Servant implements nscalc.IDataObserver_Servant {
 	DataChanged(idx: number): void {
@@ -30,8 +29,6 @@ export class DataObserverImpl extends nscalc._IDataObserver_Servant implements n
 		let pos = footstep.pos;
 		let dir = footstep.dir;
 		footsteps.push(new Footstep([color.x, color.y, color.z], footstep.idx, [pos.x, pos.y], [dir.x, dir.y]));
-		requestAnimationFrame(() => {
-			renderer.render(camera);
-		});
+		requestAnimationFrame(() => the_particle_renderer.render());
 	}
 }

@@ -208,8 +208,9 @@ void Window::createMainGroupBox()
   editConfigCheckBox->setChecked(false);
   
   // Create configuration input fields
-  hostnameEdit = new QLineEdit("archvm.lan");
-  portEdit = new QLineEdit("8443");
+  hostnameEdit = new QLineEdit("calc.nikitapn.com");
+  // hostnameEdit = new QLineEdit("archvm.lan");
+  portEdit = new QLineEdit("443");
   loginEdit = new QLineEdit("superuser");
   passwordEdit = new QLineEdit();
   passwordEdit->setEchoMode(QLineEdit::Password);

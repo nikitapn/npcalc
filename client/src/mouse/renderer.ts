@@ -1,126 +1,188 @@
-// Copyright (c) 2022 nikitapnn1@gmail.com
+// Copyright (c) 2022-2025 nikitapnn1@gmail.com
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
 import { gl } from 'mouse/gl';
-import { GLResourses } from "./texture"
-import { quad_vertex_buffer, quad_normal_buffer, quad_index_buffer, quad_texture_coords_buffer } from './primitives';
-import { Camera } from './camera';
-import { Footstep } from 'mouse/footstep';
-import { Particle } from 'mouse/particle';
-import { Firework } from 'mouse/fireworks';
-import { footsteps_texture, footsteps_texture1, dot_rad_grad } from 'mouse/assets';
+import { quad_vertex_buffer, quad_index_buffer, quad_texture_coords_buffer } from './primitives';
+import { vec2, vec4 } from 'gl-matrix';
+import { shaders } from './shaders';
+import { TextureAtlas } from './atlas';
+import atlasData from 'mouse/assets/atlas.json';
 
-import { shaders } from './shaders'
+export interface Renderable {
+  position: vec2;
+  angle: number;
+  width: number;    // size instead of tex_coord
+  height: number;
+  color: vec4;
+  textureName: 'dot' | 'footsteps' | 'footsteps1';  // which texture in atlas
+}
 
-export class Renderer {
-	private render_footsteps(camera: Camera) {
-		let footsteps = this.footsteps;
-		if (footsteps.length === 0) return;
+export class ParticleRenderer {
+  private objects: Array<Renderable> = [];
+  private atlas: TextureAtlas;
+  private instanceBuffer: WebGLBuffer;
+  private maxInstances: number = 200000;  // Pre-allocate for this many
 
-		let pinfo = shaders.footstep.use();
+  // Instance data layout: [x, y, angle, scaleX, scaleY, r, g, b, a, uvOffsetX, uvOffsetY]
+  // Total: 11 floats per instance
+  private instanceData: Float32Array;
 
-		const ix_vertex = pinfo.attr_loc.in_position;
-		const ix_texture = pinfo.attr_loc.in_texture_coord;
-		const ix_footstep_age = pinfo.uniform_loc.foot_age;
-		const ix_footstep_color = pinfo.uniform_loc.foot_color;
-		const ix_world = pinfo.uniform_loc.u_world;
+  constructor(private width: number, private height: number) {
+    this.instanceBuffer = gl.createBuffer();
+    this.instanceData = new Float32Array(this.maxInstances * 11);
+  }
 
-		gl.uniformMatrix4fv(pinfo.uniform_loc.u_proj, false, camera.proj);
-		gl.uniformMatrix4fv(pinfo.uniform_loc.u_view, false, camera.view);
-		
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, footsteps_texture.texture)
+  async init() {
+    // Load texture atlas
+    this.atlas = new TextureAtlas(gl, atlasData);
+    await this.atlas.load('/img/atlas.png');
+    console.log('Atlas loaded successfully:', atlasData.width, 'x', atlasData.height);
+  }
 
-		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, footsteps_texture1.texture)
+  private setupInstanceAttributes() {
+    const pinfo = shaders.particle_instanced.use();
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);
-		gl.vertexAttribPointer(ix_vertex, 3, gl.FLOAT, false, 0, 0);
-		gl.enableVertexAttribArray(ix_vertex);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, quad_texture_coords_buffer);
-		gl.vertexAttribPointer(ix_texture, 2, gl.FLOAT, false, 0, 0);
-		gl.enableVertexAttribArray(ix_texture);
+    const stride = 11 * 4; // 11 floats * 4 bytes
 
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, quad_index_buffer);
+    // in_instance_position (vec2)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_position);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_position, 2, gl.FLOAT, false, stride, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_position, 1);
 
-		this.footsteps.forEach((footstep: Footstep) => {
-			if ((footstep.idx & 1) === 0) {
-				gl.activeTexture(gl.TEXTURE0);
-				gl.uniform1i(pinfo.uniform_loc.u_sampler, 0);
-			} else {
-				gl.activeTexture(gl.TEXTURE1);
-				gl.uniform1i(pinfo.uniform_loc.u_sampler, 1);
-			}
-			gl.uniformMatrix4fv(ix_world, false, footstep.world);
-			gl.uniform1f(ix_footstep_age, footstep.ttl);
-			gl.uniform3fv(ix_footstep_color, footstep.color);
-			gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-		});
-	}
+    // in_instance_angle (float)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_angle);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_angle, 1, gl.FLOAT, false, stride, 8);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_angle, 1);
 
-	private render_particles(camera: Camera) {
-		if (this.fireworks.length === 0) return;
+    // in_instance_scale (vec2)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_scale);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_scale, 2, gl.FLOAT, false, stride, 12);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_scale, 1);
 
-		let pinfo = shaders.particle.use();
+    // in_instance_color (vec4)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_color);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_color, 4, gl.FLOAT, false, stride, 20);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_color, 1);
 
-		const ix_vertex = pinfo.attr_loc.in_position;
-		const ix_texture = pinfo.attr_loc.in_texture_coord;
-		//const ix_ttl = pinfo.uniform_loc.u_ttl;
-		const ix_color = pinfo.uniform_loc.u_color;
-		const ix_world = pinfo.uniform_loc.u_world;
+    // in_instance_uv_offset (vec2)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_uv_offset);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_uv_offset, 2, gl.FLOAT, false, stride, 36);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_uv_offset, 1);
+  }
 
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, dot_rad_grad.texture)
-		gl.uniform1i(pinfo.uniform_loc.u_sampler, 0);
+  public render() {
+    gl.viewport(0, 0, this.width, this.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-		gl.uniformMatrix4fv(pinfo.uniform_loc.u_proj, false, camera.proj);
-		gl.uniformMatrix4fv(pinfo.uniform_loc.u_view, false, camera.view);
-		
-		gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);
-		gl.vertexAttribPointer(ix_vertex, 3, gl.FLOAT, false, 0, 0);
-		gl.enableVertexAttribArray(ix_vertex);
+    gl.clearDepth(1.0);
+    // gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, quad_index_buffer);
+    if (this.objects.length === 0)
+      return;
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, quad_texture_coords_buffer);
-		gl.vertexAttribPointer(ix_texture, 2, gl.FLOAT, false, 0, 0);
-		gl.enableVertexAttribArray(ix_texture);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
 
-		for (let firework of this.fireworks) {
-			for (let particle of firework.particles) {
-			gl.uniformMatrix4fv(ix_world, false, particle.world);
-			gl.uniform4fv(ix_color, particle.color);
-			gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-			}
-		}
-	}
+    // Use instanced shader
+    const pinfo = shaders.particle_instanced.use();
 
-	public render(camera: Camera) {
-		gl.viewport(0, 0, this.width, this.height);
-		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Bind texture atlas
+    this.atlas.bind(0);
+    gl.uniform1i(pinfo.uniform_loc.u_sampler, 0);
 
-		gl.clearDepth(1.0);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // Set uniforms
+    gl.uniform2f(pinfo.uniform_loc.u_screen_size, this.width, this.height);
+    gl.uniform2f(pinfo.uniform_loc.u_atlas_uv_scale, 1.0 / 3.0, 1.0); // 3 textures horizontally
 
-		gl.enable(gl.BLEND);
-		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-		
-		// render footsteps
-		gl.enable(gl.CULL_FACE);
-		gl.cullFace(gl.BACK);
-		gl.enable(gl.DEPTH_TEST);
-		gl.depthFunc(gl.LEQUAL);
-		
-		this.render_footsteps(camera);
-		this.render_particles(camera);
-	}
+    // Pack instance data
+    for (let i = 0; i < this.objects.length; i++) {
+      const obj = this.objects[i];
+      const offset = i * 11;
 
-	constructor(
-		private width: number, 
-		private height: number, 
-		public footsteps: Array<Footstep>,
-		public fireworks: Array<Firework>) {
+      // Get UV offset from atlas
+      const region = this.atlas.getRegion(obj.textureName);
+      const uvOffsetX = region ? region.uv.u1 : 0;
+      const uvOffsetY = region ? region.uv.v1 : 0;
 
-	}
+      this.instanceData[offset + 0] = obj.position[0];
+      this.instanceData[offset + 1] = obj.position[1];
+      this.instanceData[offset + 2] = obj.angle;
+      this.instanceData[offset + 3] = obj.width;
+      this.instanceData[offset + 4] = obj.height;
+      this.instanceData[offset + 5] = obj.color[0];
+      this.instanceData[offset + 6] = obj.color[1];
+      this.instanceData[offset + 7] = obj.color[2];
+      this.instanceData[offset + 8] = obj.color[3];
+      this.instanceData[offset + 9] = uvOffsetX;
+      this.instanceData[offset + 10] = uvOffsetY;
+    }
+
+    // Upload instance data
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.instanceData.subarray(0, this.objects.length * 11), gl.DYNAMIC_DRAW);
+
+    // Setup instance attributes
+    this.setupInstanceAttributes();
+
+    // Setup vertex attributes (shared quad)
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_position, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_position);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_position, 0); // Not instanced
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad_texture_coords_buffer);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_texture_coord, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_texture_coord);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_texture_coord, 0); // Not instanced
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, quad_index_buffer);
+
+    // Draw all instances in ONE call!
+    gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0, this.objects.length);
+
+    // Check for WebGL errors
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+      console.error('WebGL error after drawElementsInstanced:', error);
+    }
+
+    // Reset divisors
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_position, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_angle, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_scale, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_color, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_uv_offset, 0);
+
+    // console.log('Rendered', this.objects.length, 'particles');
+
+    // Clear for next frame
+    this.objects = [];
+  }
+
+  public push_particle(p: Renderable) {
+    if (this.objects.length < this.maxInstances) {
+      this.objects.push(p);
+    } else {
+      // console.warn('Max instances reached:', this.maxInstances);
+    }
+  }
+
+  public resize(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+  }
+}
+
+export let the_particle_renderer: ParticleRenderer;
+
+export const init_particle_renderer = async (width: number, height: number) => {
+  console.log('Initializing particle renderer:', width, 'x', height);
+  the_particle_renderer = new ParticleRenderer(width, height);
+  await the_particle_renderer.init();
+  console.log('Particle renderer initialized successfully');
 }

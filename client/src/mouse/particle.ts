@@ -1,33 +1,28 @@
-// Copyright (c) 2022 nikitapnn1@gmail.com
+// Copyright (c) 2022-2025 nikitapnn1@gmail.com
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
-import { vec2, vec4, mat4 } from 'gl-matrix';
+import { vec2, vec4 } from 'gl-matrix';
+import { Renderable } from 'mouse/renderer';
+import { the_particle_renderer } from 'mouse/renderer';
 
 export class Particle {
-  position: vec2;
+  renderable: Renderable;
   velocity: vec2;
-  color: vec4;
   ttl: number;
-  world: mat4;
   alpha: number;
 
-  constructor(position: vec2, velocity: vec2, color: vec4) {
-    this.position = position;
+  constructor(position: vec2, velocity: vec2, color: vec4, textureName: Renderable['textureName']) {
+    this.renderable = {
+      position: position,
+      angle: 0,
+      width: 12,
+      height: 12,
+      color: color,
+      textureName: textureName,
+    };
+
     this.velocity = velocity;
-    this.color = color;
     this.alpha = color[3];
-    this.world = this.get_world();
-  }
-
-  get_world(): mat4 {
-    let t = mat4.create();
-    mat4.translate(t, t, [-this.position[0], -this.position[1], 0]);
-
-    let world = mat4.create();
-    mat4.scale(world, world, [ 14, 14, 1 ]);
-    mat4.multiply(world, t, world);
-
-    return world;
   }
 
   update(dt: number, acceleration: vec2, k_alpha: number = 1.0) {
@@ -37,9 +32,10 @@ export class Particle {
     vec2.add(this.velocity, this.velocity, tmp);
 
     vec2.mul(tmp, this.velocity, [dt, dt]);
-    vec2.add(this.position, this.position, tmp);
+    vec2.add(this.renderable.position, this.renderable.position, tmp);
 
-    this.world = this.get_world();
-    this.color[3] = this.alpha * k_alpha;
+    this.renderable.color[3] = this.alpha * k_alpha;
+
+    the_particle_renderer.push_particle(this.renderable);
   }
 }
