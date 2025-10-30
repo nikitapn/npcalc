@@ -2,8 +2,8 @@
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
 import { gl } from 'mouse/gl';
-import { quad_vertex_buffer, quad_index_buffer, quad_texture_coords_buffer } from './primitives';
-import { vec2, vec4 } from 'gl-matrix';
+import { ndc_quad_vertex_buffer, quad_vertex_buffer, quad_index_buffer, quad_texture_coords_buffer } from './primitives';
+import { vec2, vec3, vec4 } from 'gl-matrix';
 import { shaders } from './shaders';
 import { TextureAtlas } from './atlas';
 import atlasData from 'mouse/assets/atlas.json';
@@ -11,25 +11,40 @@ import atlasData from 'mouse/assets/atlas.json';
 export interface Renderable {
   position: vec2;
   angle: number;
-  width: number;    // size instead of tex_coord
+  width: number;
   height: number;
   color: vec4;
-  textureName: 'dot' | 'footsteps' | 'footsteps1';  // which texture in atlas
+  textureName: 'dot' | 'footsteps' | 'footsteps1';
+  age: number;           // 0.0 (birth) to 1.0 (death) for shader effects
+  glowIntensity?: number; // Glow strength (default: 1.0)
+  glowRadius?: number;    // Glow radius multiplier (default: 1.0)
+}
+
+export interface ExplosionLight {
+  position: vec2;
+  color: vec3;
+  intensity: number;  // 0-1, fades over time
+  lifetime: number;   // Current age
+  maxLifetime: number; // When to remove
 }
 
 export class ParticleRenderer {
   private objects: Array<Renderable> = [];
+  private explosions: Array<ExplosionLight> = [];
   private atlas: TextureAtlas;
   private instanceBuffer: WebGLBuffer;
   private maxInstances: number = 200000;  // Pre-allocate for this many
+  private framebuffer: WebGLFramebuffer = null;
+  private framebufferTexture: WebGLTexture = null;
+  private time: number = 0; // Accumulated time for animations
 
-  // Instance data layout: [x, y, angle, scaleX, scaleY, r, g, b, a, uvOffsetX, uvOffsetY]
-  // Total: 11 floats per instance
+  // Instance data layout: [x, y, angle, scaleX, scaleY, r, g, b, a, uvOffsetX, uvOffsetY, age, glowIntensity, glowRadius]
+  // Total: 14 floats per instance
   private instanceData: Float32Array;
 
   constructor(private width: number, private height: number) {
     this.instanceBuffer = gl.createBuffer();
-    this.instanceData = new Float32Array(this.maxInstances * 11);
+    this.instanceData = new Float32Array(this.maxInstances * 14);
   }
 
   async init() {
@@ -37,6 +52,18 @@ export class ParticleRenderer {
     this.atlas = new TextureAtlas(gl, atlasData);
     await this.atlas.load('/img/atlas.png');
     console.log('Atlas loaded successfully:', atlasData.width, 'x', atlasData.height);
+
+    this.framebufferTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.framebufferTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    this.framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.framebufferTexture, 0);
   }
 
   private setupInstanceAttributes() {
@@ -44,7 +71,7 @@ export class ParticleRenderer {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
 
-    const stride = 11 * 4; // 11 floats * 4 bytes
+    const stride = 14 * 4; // 14 floats * 4 bytes
 
     // in_instance_position (vec2)
     gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_position);
@@ -70,21 +97,30 @@ export class ParticleRenderer {
     gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_uv_offset);
     gl.vertexAttribPointer(pinfo.attr_loc.in_instance_uv_offset, 2, gl.FLOAT, false, stride, 36);
     gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_uv_offset, 1);
+
+    // in_instance_age (float)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_age);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_age, 1, gl.FLOAT, false, stride, 44);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_age, 1);
+
+    // in_instance_glow_intensity (float)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_glow_intensity);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_glow_intensity, 1, gl.FLOAT, false, stride, 48);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_glow_intensity, 1);
+
+    // in_instance_glow_radius (float)
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_instance_glow_radius);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_instance_glow_radius, 1, gl.FLOAT, false, stride, 52);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_glow_radius, 1);
   }
 
-  public render() {
-    gl.viewport(0, 0, this.width, this.height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-    gl.clearDepth(1.0);
-    // gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  private main_pass() {
 
     if (this.objects.length === 0)
       return;
 
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
 
@@ -92,8 +128,8 @@ export class ParticleRenderer {
     const pinfo = shaders.particle_instanced.use();
 
     // Bind texture atlas
-    this.atlas.bind(0);
-    gl.uniform1i(pinfo.uniform_loc.u_sampler, 0);
+    // this.atlas.bind(0);
+    // gl.uniform1i(pinfo.uniform_loc.u_sampler, 0);
 
     // Set uniforms
     gl.uniform2f(pinfo.uniform_loc.u_screen_size, this.width, this.height);
@@ -102,7 +138,7 @@ export class ParticleRenderer {
     // Pack instance data
     for (let i = 0; i < this.objects.length; i++) {
       const obj = this.objects[i];
-      const offset = i * 11;
+      const offset = i * 14;
 
       // Get UV offset from atlas
       const region = this.atlas.getRegion(obj.textureName);
@@ -120,18 +156,21 @@ export class ParticleRenderer {
       this.instanceData[offset + 8] = obj.color[3];
       this.instanceData[offset + 9] = uvOffsetX;
       this.instanceData[offset + 10] = uvOffsetY;
+      this.instanceData[offset + 11] = obj.age;
+      this.instanceData[offset + 12] = obj.glowIntensity ?? 1.0;
+      this.instanceData[offset + 13] = obj.glowRadius ?? 1.0;
     }
 
     // Upload instance data
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.instanceData.subarray(0, this.objects.length * 11), gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, this.instanceData.subarray(0, this.objects.length * 14), gl.DYNAMIC_DRAW);
 
     // Setup instance attributes
     this.setupInstanceAttributes();
 
     // Setup vertex attributes (shared quad)
     gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);
-    gl.vertexAttribPointer(pinfo.attr_loc.in_position, 3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_position, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(pinfo.attr_loc.in_position);
     gl.vertexAttribDivisor(pinfo.attr_loc.in_position, 0); // Not instanced
 
@@ -157,11 +196,78 @@ export class ParticleRenderer {
     gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_scale, 0);
     gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_color, 0);
     gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_uv_offset, 0);
-
-    // console.log('Rendered', this.objects.length, 'particles');
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_age, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_glow_intensity, 0);
+    gl.vertexAttribDivisor(pinfo.attr_loc.in_instance_glow_radius, 0);
 
     // Clear for next frame
     this.objects = [];
+  }
+
+  private postprocess_pass() {
+    const pinfo = shaders.postprocess.use();
+
+    // Bind framebuffer texture
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.framebufferTexture);
+    gl.uniform1i(pinfo.uniform_loc.u_particles, 0);
+
+    // Set screen size uniform
+    gl.uniform2f(pinfo.uniform_loc.u_screen_size, this.width, this.height);
+    
+    // Set time uniform for star twinkling
+    gl.uniform1f(pinfo.uniform_loc.u_time, this.time);
+
+    // Set explosion data uniforms
+    gl.uniform1i(pinfo.uniform_loc.u_explosion_count, this.explosions.length);
+    
+    const positions = new Float32Array(20); // 10 * vec2
+    const colors = new Float32Array(30);    // 10 * vec3
+    const intensities = new Float32Array(10);
+    
+    for (let i = 0; i < Math.min(this.explosions.length, 10); i++) {
+      const exp = this.explosions[i];
+      positions[i * 2 + 0] = exp.position[0];
+      positions[i * 2 + 1] = exp.position[1];
+      colors[i * 3 + 0] = exp.color[0];
+      colors[i * 3 + 1] = exp.color[1];
+      colors[i * 3 + 2] = exp.color[2];
+      intensities[i] = exp.intensity;
+    }
+    
+    gl.uniform2fv(pinfo.uniform_loc.u_explosion_positions, positions);
+    gl.uniform3fv(pinfo.uniform_loc.u_explosion_colors, colors);
+    gl.uniform1fv(pinfo.uniform_loc.u_explosion_intensities, intensities);
+
+    // Setup vertex attributes (ndc quad)
+    gl.bindBuffer(gl.ARRAY_BUFFER, ndc_quad_vertex_buffer);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_position, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_position);
+
+    // Setup texture coords
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad_texture_coords_buffer);
+    gl.vertexAttribPointer(pinfo.attr_loc.in_texture_coord, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(pinfo.attr_loc.in_texture_coord);
+
+    // Draw full-screen quad
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  public render(dt: number = 0.016) {
+    // Update time and explosions
+    this.time += dt;
+    this.update_explosions(dt);
+    
+    gl.viewport(0, 0, this.width, this.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+
+    gl.clearDepth(1.0);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    this.main_pass();
+    this.postprocess_pass();
   }
 
   public push_particle(p: Renderable) {
@@ -169,6 +275,37 @@ export class ParticleRenderer {
       this.objects.push(p);
     } else {
       // console.warn('Max instances reached:', this.maxInstances);
+    }
+  }
+
+  public add_explosion(position: vec2, color: vec3, intensity: number = 1.0, lifetime: number = 0.5) {
+    this.explosions.push({
+      position: vec2.clone(position),
+      color: vec3.clone(color),
+      intensity: intensity,
+      lifetime: 0,
+      maxLifetime: lifetime
+    });
+    
+    // Limit to 10 explosions max
+    if (this.explosions.length > 10) {
+      this.explosions.shift();
+    }
+  }
+
+  private update_explosions(dt: number) {
+    for (let i = this.explosions.length - 1; i >= 0; i--) {
+      const exp = this.explosions[i];
+      exp.lifetime += dt;
+      
+      // Fade intensity over time
+      const age = exp.lifetime / exp.maxLifetime;
+      exp.intensity = 1.0 - age; // Linear fade
+      
+      // Remove dead explosions
+      if (age >= 1.0) {
+        this.explosions.splice(i, 1);
+      }
     }
   }
 

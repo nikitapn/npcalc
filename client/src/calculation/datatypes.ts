@@ -5,7 +5,7 @@ import { MobXValue } from 'tables/modified'
 import { TableItemWithOwnership } from 'tables/table_item'
 import { observable } from 'mobx'
 import  global from 'misc/global'
-import * as NSCalc from 'rpc/nscalc'
+import * as nscalc from 'rpc/nscalc'
 
 export const solution_id_bit 		= 0x10000000;  
 export const fertilizer_id_bit 	= 0x20000000;  
@@ -137,13 +137,12 @@ export class Solution extends TableItemWithOwnership {
 		return s;
 	}
 
-	public static create_from_data(data: NSCalc.Flat_nscalc.Solution_Direct): Solution {
+	public static create_from_data(data: nscalc.Solution): Solution {
 		let s = new Solution(false, data.userName);
 		s.set_id(data.id);
 		s.set_name(data.name);
-		let vde = data.elements_d();
 		for (let i = 0; i < ELEMENTS_MAX; ++i) {
-			s.elements[i] = new SolutionElement(i, vde.at(i));
+			s.elements[i] = new SolutionElement(i, data.elements[i]);
 		}
 		return s;
 	}
@@ -152,11 +151,6 @@ export class Solution extends TableItemWithOwnership {
 		this.elements[index].setModified(false);
 		this.elements[index].mx_value = mass_part;
 	}
-
-	//	set_id(id: number) {
-	//		super.set_id(id);
-	//		for (let el of this.elements) el.setModified(false);
-	//	}
 
 	get_element(element: ELEMENT): SolutionElement {
 		return this.elements[element];
@@ -189,8 +183,8 @@ export class Solution extends TableItemWithOwnership {
 export class Fertilizer extends TableItemWithOwnership {
 	@observable public elements: Array<number>;
 	formula: MobXValue<string>;
-	type: NSCalc.FertilizerType;
-	@observable bottle: NSCalc.FertilizerBottle;
+	type: nscalc.FertilizerType;
+	@observable bottle: nscalc.FertilizerBottle;
 	@observable density: number;
 	@observable cost: number;
 
@@ -217,7 +211,7 @@ export class Fertilizer extends TableItemWithOwnership {
 		} catch (e) { console.log(e); }
 	}
 
-	public static create_from_data(data: NSCalc.Flat_nscalc.Fertilizer_Direct): Fertilizer {
+	public static create_from_data(data: nscalc.Fertilizer): Fertilizer {
 		let f = new Fertilizer(false, data.userName);
 		f.set_id(data.id);
 		f.mx_value = data.name;

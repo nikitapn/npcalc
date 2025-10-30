@@ -152,7 +152,7 @@ interface Authorizator {
   UserData LogIn(login: in string, password: in string) raises(AuthorizationFailed);
   UserData LogInWithSessionId(session_id: in string) raises(AuthorizationFailed);
   boolean LogOut(session_id: in string);
-  
+
   boolean CheckUsername(username: in string);
   boolean CheckEmail(email: in string);
   void RegisterStepOne(username: in string, email: in string, password: in string) raises(RegistrationFailed);
@@ -188,7 +188,7 @@ interface DataObserver {
 [trusted=false]
 interface Chat {
   void Connect(obj: in object);
-  boolean  Send(msg: in ChatMessage);
+  boolean Send(msg: in ChatMessage);
 }
 
 interface ChatParticipant {

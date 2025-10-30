@@ -55,17 +55,16 @@ class Table_Calculations extends TableModel(class {}, Calculation.Calculation) {
 export let calculations = new Table_Calculations();
 
 export const get_calculations = async () => {
-	let calculations_data = NPRPC.make_ref<NPRPC.Flat.Vector_Direct2<nscalc.Flat_nscalc.Calculation_Direct>>();
-	if (global.user_data.reg_user) {
-		await global.user_data.reg_user.GetMyCalculations(calculations_data);
-	} else {
-		await calculator.GetGuestCalculations(calculations_data);
-	}
+	let data = (global.user_data.reg_user)
+		// FIXME:
+		// Registered user might wanna use WebSocket transport here
+		// Since here will probably already be an open connection
+		? await global.user_data.reg_user.http.GetMyCalculations()
+		: await calculator.http.GetGuestCalculations();
 
 	calculations.clear();
-	for (let calc_data of calculations_data.value) {
-		calculations.push_one(Calculation.Calculation.create_from_data(calc_data));
-	}
+	for (let c of data)
+		calculations.push_one(Calculation.Calculation.create_from_data(c));
 
 	document.dispatchEvent(new CustomEvent("update_my_calculations"));
 }

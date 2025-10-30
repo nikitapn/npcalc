@@ -14,7 +14,7 @@ export class DataObserverImpl extends nscalc._IDataObserver_Servant implements n
 		// console.log("DataObserverImpl(): " + idx.toString());
 	}
 
-	OnAlarm(alarm: nscalc.Flat_nscalc.Alarm_Direct) {
+	OnAlarm(alarm: nscalc.Alarm) {
 		for (let i = 0; i < alarms.length; ++i) {
 			if (alarms[i].confirmed) {
 				alarms.splice(i, 0, new Alarm(alarm.id, alarm.type, alarm.msg));
@@ -24,7 +24,7 @@ export class DataObserverImpl extends nscalc._IDataObserver_Servant implements n
 		alarms.push(new Alarm(alarm.id, alarm.type, alarm.msg));
 	}
 
-	OnFootstep(footstep: nscalc.Flat_nscalc.Footstep_Direct): void {
+	OnFootstep(footstep: nscalc.Footstep): void {
 		let color = footstep.color;
 		let pos = footstep.pos;
 		let dir = footstep.dir;

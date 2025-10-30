@@ -5,15 +5,12 @@
 </svelte:head>
 
 <script lang="ts">
-  import Banner from 'gui/misc/Banner.svelte'
   import Footer from 'gui/misc/Footer.svelte'
   import { fade } from 'svelte/transition'
   import { onMount, onDestroy } from 'svelte'
   import { init as init_mouse, handleResize } from 'mouse/main'
 
   export let content: HTMLDivElement;
-
-  let user_made_a_bad_decision = false;
 
   let canvas: HTMLCanvasElement;
   let resizeTimeout: number;
@@ -104,16 +101,14 @@
     left: 0;
     pointer-events:none;
     z-index: 100;
+    /* opacity: 0.95; */
   }
 </style>
 
 <div>
   <canvas class="overflow" bind:this={canvas} width="800" height="600"></canvas>
-  {#if !user_made_a_bad_decision}
   <div transition:fade="{{duration: 5000}}">
     <div bind:this={content} />
     <Footer />
   </div>
-  {/if}
-  <Banner bind:user_made_a_bad_decision={user_made_a_bad_decision}/>
 </div>

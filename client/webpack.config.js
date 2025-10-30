@@ -60,8 +60,7 @@ module.exports = env => {
 				{ enforce: "pre", test: /\.js$/, loader: "source-map-loader" },
 				{ test: /\.css$/, use: ['style-loader', 'css-loader'] },
 				{ test: /\.exec\/calc.js/, use: ['script-loader'] },
-				{ test: /\.vert$/, loader: 'webpack-glsl-loader' },
-				{ test: /\.frag$/, loader: 'webpack-glsl-loader' },
+				{ test: /\.(vert|frag)$/, loader: 'webpack-glsl-loader' },
 				{ test: /\.json$/, type: 'json' }, // Import JSON directly
 			]
 		},

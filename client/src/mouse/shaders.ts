@@ -113,12 +113,31 @@ export let shaders = {
       in_instance_angle: -1,
       in_instance_scale: -1,
       in_instance_color: -1,
-      in_instance_uv_offset: -1
+      in_instance_uv_offset: -1,
+      in_instance_age: -1,
+      in_instance_glow_intensity: -1,
+      in_instance_glow_radius: -1
     },
     {
       u_screen_size: -1,
       u_atlas_uv_scale: -1,
-      u_sampler: -1
+    }
+  ),
+  postprocess: new MyShader(
+    require('mouse/shaders/postprocess.vert'),
+    require('mouse/shaders/postprocess.frag'),
+    {
+      in_position: -1,
+      in_texture_coord: -1
+    },
+    {
+      u_screen_size: -1,
+      u_particles: -1,
+      u_time: -1,
+      u_explosion_positions: -1,
+      u_explosion_colors: -1,
+      u_explosion_intensities: -1,
+      u_explosion_count: -1
     }
   )
 };

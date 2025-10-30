@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25.1)
 project(nscalc)
 
 add_subdirectory(external/npsystem/3rd/spdlog)
+add_definitions(-DSPDLOG_COMPILED_LIB)
+include_directories(
+    external/npsystem/3rd/glaze/include
+)
 
 option(OPT_BUILD_PROXY_CLIENT "Build the proxy client" ON)
 

@@ -1,5 +1,6 @@
 {
   "files.associations": {
+    ".args": "gn",
     "string_view": "cpp",
     "iostream": "cpp",
     "system_error": "cpp",
@@ -87,7 +88,17 @@
     "typeindex": "cpp",
     "typeinfo": "cpp",
     "valarray": "cpp",
-    "variant": "cpp"
+    "variant": "cpp",
+    "__bit_reference": "cpp",
+    "__locale": "cpp",
+    "__split_buffer": "cpp",
+    "__tree": "cpp",
+    "__verbose_abort": "cpp",
+    "ios": "cpp",
+    "locale": "cpp",
+    "__node_handle": "cpp",
+    "execution": "cpp",
+    "print": "cpp"
   },
   "C_Cpp.default.cppStandard": "c++23",
   "C_Cpp.default.compileCommands": [

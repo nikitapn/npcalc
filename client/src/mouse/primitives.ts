@@ -4,6 +4,7 @@
 import { gl } from 'mouse/gl';
 import { mat4 } from "gl-matrix";
 
+export var ndc_quad_vertex_buffer: WebGLBuffer = null;
 export var quad_vertex_buffer: WebGLBuffer = null;
 export var quad_index_buffer: WebGLBuffer = null;
 export var quad_normal_buffer: WebGLBuffer = null;
@@ -24,10 +25,10 @@ export var identity_matrix: mat4 = null;
 */
 
 const quad_vertices = [
-  -0.5, +0.5, 0, // 0
-  +0.5, +0.5, 0, // 1
-  -0.5, -0.5, 0, // 2
-  +0.5, -0.5, 0, // 3
+  -0.5, +0.5, // 0
+  +0.5, +0.5, // 1
+  -0.5, -0.5, // 2
+  +0.5, -0.5, // 3
 ];
 
 const quad_indices = [
@@ -47,6 +48,15 @@ const quad_texture_coords = [
   0.0, 1.0,
   1.0, 1.0,
 ];
+
+// Y is inverted in NDC space
+const ndc_quad_vertices = [
+  -1.0, -1.0, // 0
+  +1.0, -1.0, // 1
+  -1.0, +1.0, // 2
+  +1.0, +1.0, // 3
+];
+
 
 const origin_vertices = [
   0, 0, 0,
@@ -78,6 +88,11 @@ export const init = (): void => {
   gl.bindBuffer(gl.ARRAY_BUFFER, axis_color_buffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(origin_color), gl.STATIC_DRAW);
 
+  // ndc quad
+  ndc_quad_vertex_buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, ndc_quad_vertex_buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ndc_quad_vertices), gl.STATIC_DRAW);
+  
   // quad
   quad_vertex_buffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, quad_vertex_buffer);

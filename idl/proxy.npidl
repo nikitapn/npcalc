@@ -3,74 +3,74 @@ module proxy;
 alias bytestream = vector<u8>;
 
 enum CloseReason {
-	Normal						= 0, // Normal closure
-	Error 						= 1, // Error occurred
-	DnsError					= 2, // DNS resolution error
-	ConnectionRefused = 3, // Connection refused by target server
-	Timeout 					= 4, // Connection timed out
+  Normal            = 0, // Normal closure
+  Error             = 1, // Error occurred
+  DnsError          = 2, // DNS resolution error
+  ConnectionRefused = 3, // Connection refused by target server
+  Timeout           = 4, // Connection timed out
 };
 
 interface SessionCallbacks {
-	/**
-	 * Called when a tunnel session is established successfully
-	 * @param session_id - unique session identifier previously returned by EstablishTunnel
-	 */
-	async OnTunnelEstablished(session_id: in u32);
+  /**
+   * Called when a tunnel session is established successfully
+   * @param session_id - unique session identifier previously returned by EstablishTunnel
+   */
+  async OnTunnelEstablished(session_id: in u32);
 
-	/**
-	 * Called when data is received from the target server
-	 * @param session_id - unique session identifier
-	 * @param data - data received from target server
-	 */
-	async OnDataReceived(session_id: in u32, data: in bytestream);
-	
-	/**
-	 * Called when a session is closed
-	 * @param session_id - unique session identifier
-	 * @param reason - reason for closure (0=normal, 1=error)
-	 */
-	async OnSessionClosed(session_id: in u32, reason: in CloseReason);
+  /**
+   * Called when data is received from the target server
+   * @param session_id - unique session identifier
+   * @param data - data received from target server
+   */
+  async OnDataReceived(session_id: in u32, data: in bytestream);
+
+  /**
+   * Called when a session is closed
+   * @param session_id - unique session identifier
+   * @param reason - reason for closure (0=normal, 1=error)
+   */
+  async OnSessionClosed(session_id: in u32, reason: in CloseReason);
 }
 
 interface User {
-	/**
-	 * Register callback object for receiving data from server
-	 * @param callbacks - callback object implementing SessionCallbacks
-	 */
-	void RegisterCallbacks(callbacks: in object);
-	
-	/**
-	 * Establish a new SOCKS5 tunnel session
-	 * @param target_host - target hostname or IP
-	 * @param target_port - target port
-	 * @return session_id - unique session identifier
-	 */
-	u32 EstablishTunnel(target_host: in string, target_port: in u16);
-	
-	/**
-	 * Send data through an established tunnel
-	 * @param session_id - session identifier
-	 * @param data - data to send to target server
-	 * @return success - true if data was sent successfully
-	 */
-	boolean SendData(session_id: in u32, data: in bytestream);
-	
-	/**
-	 * Close a tunnel session
-	 * @param session_id - session identifier
-	 */
-	void CloseTunnel(session_id: in u32);
+  /**
+   * Register callback object for receiving data from server
+   * @param callbacks - callback object implementing SessionCallbacks
+   */
+  void RegisterCallbacks(callbacks: in object);
+
+  /**
+   * Establish a new SOCKS5 tunnel session
+   * @param target_host - target hostname or IP
+   * @param target_port - target port
+   * @return session_id - unique session identifier
+   */
+  u32 EstablishTunnel(target_host: in string, target_port: in u16);
+
+  /**
+   * Send data through an established tunnel
+   * @param session_id - session identifier
+   * @param data - data to send to target server
+   * @return success - true if data was sent successfully
+   */
+  boolean SendData(session_id: in u32, data: in bytestream);
+
+  /**
+   * Close a tunnel session
+   * @param session_id - session identifier
+   */
+  void CloseTunnel(session_id: in u32);
 }
 
 exception AuthorizationFailed {}
 
 [trusted=false]
 interface Server {
-	/**
-	 * @param login - user login (username)
-	 * @param password - user password (plaintext)
-	 * @return object - object (User) to communicate with the server
-	 */
-	void LogIn(login: in string, password: in string, user: out object)
-		raises(AuthorizationFailed);
+  /**
+   * @param login - user login (username)
+   * @param password - user password (plaintext)
+   * @return object - object (User) to communicate with the server
+   */
+  void LogIn(login: in string, password: in string, user: out object)
+    raises(AuthorizationFailed);
 }

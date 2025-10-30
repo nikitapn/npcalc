@@ -5,11 +5,12 @@ import { vec2 } from 'gl-matrix'
 import { the_canvas, init as init_gl, reinit as reinit_gl, screen_to_normalized_coordinates, getCanvasSize } from 'mouse/gl';
 import { init_particle_renderer, the_particle_renderer } from 'mouse/renderer';
 import { Footstep, footsteps } from 'mouse/footstep';
-import { firework_system } from 'mouse/fireworks';
+import { fireworkSystem } from 'mouse/fireworks';
 import { init as init_primitives } from 'mouse/primitives'
 import { init as init_shaders} from 'mouse/shaders';
 import { Timer } from 'mouse/timer'
 import { calculator } from 'rpc/rpc';
+import { flatParticleSystem } from 'mouse/particle_system';
 
 interface Color {
   x: number;
@@ -63,7 +64,7 @@ export const handleResize = async (width: number, height: number) => {
   // Update canvas size
   the_canvas.width = width;
   the_canvas.height = height;
-  
+
   // Reinitialize WebGL context (it's lost when canvas resizes)
   reinit_gl();
 
@@ -87,11 +88,13 @@ const the_loop = (): void => {
 
   t += timer.dt;
 
-  firework_system.update(timer);
+  fireworkSystem.update(timer);
+  flatParticleSystem.update(timer.dt);
   processFootsteps(timer.dt);
-  the_particle_renderer.render();
 
-  if (!firework_system.stop) {
+  the_particle_renderer.render(timer.dt);
+
+  if (!fireworkSystem.stop) {
     requestAnimationFrame(the_loop);
   } else {
     setTimeout(the_loop, 100);
@@ -120,19 +123,20 @@ const processFootsteps = (dt: number): void => {
 let cnt = 0;
 let prev_pos: vec2 = [0, 0];
 let footstep_cnt = 0;
+let mouse_pos: vec2 = [0, 0];
 const on_mouse_move = (ev: MouseEvent) => {
-  let pos = vec2.fromValues(ev.clientX, ev.clientY);
+  mouse_pos = vec2.fromValues(ev.clientX, ev.clientY);
 
   if (cnt++ === 0) {
-    prev_pos = pos;
+    prev_pos = mouse_pos;
     return;
   }
 
   if (cnt % 16 !== 0)
     return;
 
-  let dir = vec2.fromValues(pos[0] - prev_pos[0], pos[1] - prev_pos[1]);
-  let distance = vec2.distance(prev_pos, pos);
+  let dir = vec2.fromValues(mouse_pos[0] - prev_pos[0], mouse_pos[1] - prev_pos[1]);
+  let distance = vec2.distance(prev_pos, mouse_pos);
 
   if (distance >= 128) {
     vec2.normalize(dir, dir);
@@ -146,24 +150,24 @@ const on_mouse_move = (ev: MouseEvent) => {
       let npos = screen_to_normalized_coordinates(prev_pos[0], prev_pos[1]);
 
       footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, prev_pos, dir));
-      calculator.SendFootstep({
-        color: footstep_color,
-        idx: footstep_cnt++,
-        pos: {x: npos[0], y: npos[1]},
-        dir: {x: dir[0], y: dir[1]}
-      });
+      // calculator.SendFootstep({
+      //   color: footstep_color,
+      //   idx: footstep_cnt++,
+      //   pos: {x: npos[0], y: npos[1]},
+      //   dir: {x: dir[0], y: dir[1]}
+      // });
     }
   } else{
     // Normalize prev_pos to [0, 1] range to screen coordinates to ensure consistency across different resolutions
-    let npos = screen_to_normalized_coordinates(pos[0], pos[1]);
+    let npos = screen_to_normalized_coordinates(mouse_pos[0], mouse_pos[1]);
 
     footsteps.push(new Footstep([1, 0, 0], footstep_cnt++, npos, dir));
-    calculator.SendFootstep({
-      color: footstep_color,
-      idx: footstep_cnt++,
-      pos: {x: npos[0], y: npos[1]},
-      dir: {x: dir[0], y: dir[1]}
-    });
+    // calculator.SendFootstep({
+    //   color: footstep_color,
+    //   idx: footstep_cnt++,
+    //   pos: {x: npos[0], y: npos[1]},
+    //   dir: {x: dir[0], y: dir[1]}
+    // });
   }
-  prev_pos = pos;
+  prev_pos = mouse_pos;
 }

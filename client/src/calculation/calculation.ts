@@ -7,7 +7,7 @@ import { observable, computed } from 'mobx'
 import { UndoRedo } from 'tables/command'
 import { store } from 'tables/store'
 import { Fertilizer, Solution, ELEMENT, ELEMENTS_MAX, calc_solution_ec, calc_solution_ratio, to_name } from 'calculation/datatypes'
-import * as NSCalc from 'rpc/nscalc'
+import * as nscalc from 'rpc/nscalc'
 
 export class TargetElement {
   private value_: MobXValue<number>;
@@ -244,7 +244,7 @@ export class Calculation extends TableItem {
     }
   }
 
-  public static create_from_data(data: NSCalc.Flat_nscalc.Calculation_Direct): Calculation {
+  public static create_from_data(data: nscalc.Calculation): Calculation {
     let s = new Calculation(false);
     s.set_id(data.id);
     s.set_name(data.name);
@@ -253,7 +253,7 @@ export class Calculation extends TableItem {
     let ix = 0;
 
     let target_elements = JSON.parse(data.elements) as Array<[number, number, number]>
-    for (let ix = 0; ix < NSCalc.TARGET_ELEMENT_COUNT; ++ix) {
+    for (let ix = 0; ix < nscalc.TARGET_ELEMENT_COUNT; ++ix) {
       s.elements[ix] = new TargetElement();
       s.elements[ix].set_value(target_elements[ix][1]);
       s.elements[ix].ratio = target_elements[ix][2];
@@ -474,9 +474,9 @@ export class Calculation extends TableItem {
 
     for (let i = 0; i < mixs.length; ++i) {
       let s = "";
-      if (mixs[i].type == NSCalc.FertilizerType.DRY) {
+      if (mixs[i].type == nscalc.FertilizerType.DRY) {
         s = ((X[i] / 1000.0) * this.volume.mx_value).toFixed(2) + " g";
-      } else if (mixs[i].type == NSCalc.FertilizerType.LIQUID) {
+      } else if (mixs[i].type == nscalc.FertilizerType.LIQUID) {
         s = (X[i] * this.volume.mx_value / mixs[i].density).toFixed(2) + " ml";
       } else {
         let k = 1.0 / mixs[i].density;
