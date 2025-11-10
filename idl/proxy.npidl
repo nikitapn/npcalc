@@ -1,6 +1,6 @@
-namespace proxy {
+module proxy;
 
-using bytestream = vector<u8>;
+alias bytestream = vector<u8>;
 
 enum CloseReason {
 	Normal						= 0, // Normal closure
@@ -62,7 +62,7 @@ interface User {
 	void CloseTunnel(session_id: in u32);
 }
 
-AuthorizationFailed: exception {}
+exception AuthorizationFailed {}
 
 [trusted=false]
 interface Server {
@@ -74,5 +74,3 @@ interface Server {
 	void LogIn(login: in string, password: in string, user: out object)
 		raises(AuthorizationFailed);
 }
-
-} // namespace proxy

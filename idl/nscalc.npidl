@@ -1,206 +1,204 @@
 // Copyright (c) 2022-2025 nikitapnn1@gmail.com
 // This file is a part of Nikita's NPK calculator and covered by LICENSING file in the topmost directory
 
-namespace nscalc {
+module nscalc;
 
 const GUEST_ID = 2;
 const TARGET_ELEMENT_COUNT = 14;
 
 enum ELEMENT { 
-	N_NO3, N_NH4, P, K, Ca, Mg, S, Cl, Fe, Zn, B, Mn, Cu, Mo, 
-	CO3, _P1, _P2, _P3, _P4, _P5, _P6, _P7, _P8, 
-	H, O, C, NH4, NO3, SO4, H2PO4
+  N_NO3, N_NH4, P, K, Ca, Mg, S, Cl, Fe, Zn, B, Mn, Cu, Mo, 
+  CO3, _P1, _P2, _P3, _P4, _P5, _P6, _P7, _P8, 
+  H, O, C, NH4, NO3, SO4, H2PO4
 };
 
-Solution: flat {
-	id: u32;
-	userId: u32;
-	userName: string;
-	name: string;
-	elements: float64[TARGET_ELEMENT_COUNT];
+message Solution {
+  id: u32;
+  userId: u32;
+  userName: string;
+  name: string;
+  elements: f64[TARGET_ELEMENT_COUNT];
 }
 
 enum FertilizerBottle: u8 {
-	BOTTLE_A,
-	BOTTLE_B,
-	BOTTLE_C
+  BOTTLE_A,
+  BOTTLE_B,
+  BOTTLE_C
 };
 
 enum FertilizerType: u8 {
-	DRY,
-	LIQUID,
-	SOLUTION,
+  DRY,
+  LIQUID,
+  SOLUTION,
 };
 
-Fertilizer: flat {
-	id: u32;
-	userId: u32;
-	userName: string;
-	name: string;
-	formula: string;
+message Fertilizer {
+  id: u32;
+  userId: u32;
+  userName: string;
+  name: string;
+  formula: string;
 }
 
-TargetElement : flat {
-	value: float64;
-	valueBase: float64;
-	ratio: float64;
+message TargetElement  {
+  value: f64;
+  valueBase: f64;
+  ratio: f64;
 }
 
-Calculation: flat {
-	id: u32;
-	name: string;
-	elements: string; // TargetElement[TARGET_ELEMENT_COUNT]
-	fertilizersIds: string; // vector<u32>;
-	volume: float64;
-	mode: boolean;
+message Calculation {
+  id: u32;
+  name: string;
+  elements: string; // TargetElement[TARGET_ELEMENT_COUNT]
+  fertilizersIds: string; // vector<u32>;
+  volume: f64;
+  mode: boolean;
 }
 
-Media: flat {
-	name: string;
-	data: vector<u8>;
+message Media {
+  name: string;
+  data: vector<u8>;
 }
 
 enum AuthorizationFailed_Reason: u8 {
-	email_does_not_exist,
-	incorrect_password,
-	session_does_not_exist
+  email_does_not_exist,
+  incorrect_password,
+  session_does_not_exist
 }
 
-AuthorizationFailed: exception {
-	reason: AuthorizationFailed_Reason;
+exception AuthorizationFailed {
+  reason: AuthorizationFailed_Reason;
 }
 
 enum RegistrationFailed_Reason: u8 {
-	username_already_exist,
-	email_already_registered,
-	incorrect_code,
-	invalid_username
+  username_already_exist,
+  email_already_registered,
+  incorrect_code,
+  invalid_username
 }
 
-RegistrationFailed: exception {
-	reason: RegistrationFailed_Reason;
+exception RegistrationFailed {
+  reason: RegistrationFailed_Reason;
 }
 
-PermissionViolation: exception {
-	msg: string;
+exception PermissionViolation {
+  msg: string;
 }
 
-InvalidArgument: exception {
-	msg: string;
+exception InvalidArgument {
+  msg: string;
 }
 
-UserData: flat {
-	name: string;
-	sessionId: string;
-	db: object; // RegisteredUser
+message UserData {
+  name: string;
+  sessionId: string;
+  db: object; // RegisteredUser
 }
 
-SolutionElement: flat {
-	index: u32;
-	value: float64;
+message SolutionElement {
+  index: u32;
+  value: f64;
 }
 
 enum AlarmType {
-	Info,
-	Warning,
-	Critical
+  Info,
+  Warning,
+  Critical
 }
 
-Alarm: flat {
-	id: u32;
-	type: AlarmType;
-	msg: string;
+message Alarm {
+  id: u32;
+  type: AlarmType;
+  msg: string;
 }
 
 enum ChatAttachmentType {
-	Picture,
-	File
+  Picture,
+  File
 }
 
-ChatAttachment: flat {
-	type: ChatAttachmentType;
-	name: string;
-	data: vector<u8>;
+message ChatAttachment {
+  type: ChatAttachmentType;
+  name: string;
+  data: vector<u8>;
 }
 
-ChatMessage: flat {
-	timestamp: u32;
-	str: string;
-	attachment?: ChatAttachment;
+message ChatMessage {
+  timestamp: u32;
+  str: string;
+  attachment?: ChatAttachment;
 }
 
-Vector3: flat {
-	x: float32;
-	y: float32;
-	z: float32;
+message Vector3 {
+  x: f32;
+  y: f32;
+  z: f32;
 }
 
-Vector2: flat {
-	x: float32;
-	y: float32;
+message Vector2 {
+  x: f32;
+  y: f32;
 }
 
-Footstep: flat {
-	color: Vector3;
-	idx: u32;
-	pos: Vector2;
-	dir: Vector2;
+message Footstep {
+  color: Vector3;
+  idx: u32;
+  pos: Vector2;
+  dir: Vector2;
 }
 
 [trusted=false]
 interface Authorizator {
-	UserData LogIn(login: in string, password: in string) raises(AuthorizationFailed);
-	UserData LogInWithSessionId(session_id: in string) raises(AuthorizationFailed);
-	boolean LogOut(session_id: in string);
-	
-	boolean CheckUsername(username: in string);
-	boolean CheckEmail(email: in string);
-	void RegisterStepOne(username: in string, email: in string, password: in string) raises(RegistrationFailed);
-	void RegisterStepTwo(username: in string, code: in u32) raises(RegistrationFailed);
+  UserData LogIn(login: in string, password: in string) raises(AuthorizationFailed);
+  UserData LogInWithSessionId(session_id: in string) raises(AuthorizationFailed);
+  boolean LogOut(session_id: in string);
+  
+  boolean CheckUsername(username: in string);
+  boolean CheckEmail(email: in string);
+  void RegisterStepOne(username: in string, email: in string, password: in string) raises(RegistrationFailed);
+  void RegisterStepTwo(username: in string, code: in u32) raises(RegistrationFailed);
 }
 
 [trusted=false]
 interface RegisteredUser {
-	void GetMyCalculations(calculations: out direct vector<Calculation>);
+  void GetMyCalculations(calculations: out direct vector<Calculation>);
 
-	u32 AddSolution(name: in string, elements: in float64[TARGET_ELEMENT_COUNT]);
-	void SetSolutionName(id: in u32, name: in string) raises(PermissionViolation);
-	void SetSolutionElements(id: in u32, name: in vector<SolutionElement>) raises(PermissionViolation);
-	void DeleteSolution(id: in u32) raises(PermissionViolation);
+  u32 AddSolution(name: in string, elements: in f64[TARGET_ELEMENT_COUNT]);
+  void SetSolutionName(id: in u32, name: in string) raises(PermissionViolation);
+  void SetSolutionElements(id: in u32, name: in vector<SolutionElement>) raises(PermissionViolation);
+  void DeleteSolution(id: in u32) raises(PermissionViolation);
 
-	u32 AddFertilizer(name: in string, formula: in string);
-	void SetFertilizerName(id: in u32, name: in string) raises(PermissionViolation);
-	void SetFertilizerFormula(id: in u32, name: in string) raises(PermissionViolation);
-	void DeleteFertilizer(id: in u32) raises(PermissionViolation);
+  u32 AddFertilizer(name: in string, formula: in string);
+  void SetFertilizerName(id: in u32, name: in string) raises(PermissionViolation);
+  void SetFertilizerFormula(id: in u32, name: in string) raises(PermissionViolation);
+  void DeleteFertilizer(id: in u32) raises(PermissionViolation);
 
-	u32 UpdateCalculation(calculation: in Calculation);
-	void DeleteCalculation(id: in u32);
+  u32 UpdateCalculation(calculation: in Calculation);
+  void DeleteCalculation(id: in u32);
 }
 
 interface DataObserver {
-	async DataChanged(idx: in u32);
-	async OnAlarm(alarm: in Alarm);
-	async OnFootstep(footstep: in Footstep);
-	// async OnChange_Solution(solution: in Solution);
-	// async OnChange_Fertilizer(fertilizer: in Fertilizer);
+  async DataChanged(idx: in u32);
+  async OnAlarm(alarm: in Alarm);
+  async OnFootstep(footstep: in Footstep);
+  // async OnChange_Solution(solution: in Solution);
+  // async OnChange_Fertilizer(fertilizer: in Fertilizer);
 }
 
 [trusted=false]
 interface Chat {
-	void Connect(obj: in object);
-	boolean	Send(msg: in ChatMessage);
+  void Connect(obj: in object);
+  boolean  Send(msg: in ChatMessage);
 }
 
 interface ChatParticipant {
-	async OnMessage(msg: in ChatMessage);
+  async OnMessage(msg: in ChatMessage);
 }
 
 [trusted=false]
 interface Calculator {
-	void GetData(solutions: out direct vector<Solution>, fertilizers: out direct vector<Fertilizer>);
-	void Subscribe(obj: /*DataObserver*/ in object );
-	void GetGuestCalculations(calculations: out direct vector<Calculation>);
-	void SendFootstep(footstep: in Footstep);
+  void GetData(solutions: out direct vector<Solution>, fertilizers: out direct vector<Fertilizer>);
+  void Subscribe(obj: /*DataObserver*/ in object );
+  void GetGuestCalculations(calculations: out direct vector<Calculation>);
+  void SendFootstep(footstep: in Footstep);
 }
-
-} // namespace nscalc
