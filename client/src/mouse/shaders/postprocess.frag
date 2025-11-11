@@ -49,7 +49,7 @@ void main() {
         float dist = length(toExplosion);
         
         // Smooth radial falloff (like moonlight)
-        float radius = 1000.0; // How far the light reaches (pixels)
+        float radius = u_screen_size.y * 2.0; // How far the light reaches (pixels)
         float normalizedDist = dist / radius;
         
         // Exponential falloff with smooth edge

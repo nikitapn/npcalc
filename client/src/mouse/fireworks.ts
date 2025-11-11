@@ -47,7 +47,7 @@ export class Firework {
       ],
       color: [...this.color, 0.6] as vec4,
       maxLifetime: this.is_root ? 1.0 : 0.5,
-      size: this.is_root ? 10 : 6,
+      size: this.is_root ? 12 : 8,
       glowIntensity: 0.85,
       glowRadius: 0.9
     });
