@@ -18,6 +18,7 @@ interface Color {
   z: number;
 }
 
+let fireworksStarted = false;
 let footstep_color: Color = null;
 let timer: Timer;
 let is_initialized = false;
@@ -38,6 +39,11 @@ export const init = async (canvas: HTMLCanvasElement) => {
 
   is_initialized = true;
   the_loop();
+}
+
+export function startFireworks() {
+  fireworkSystem.stop = false;
+  fireworksStarted = true;
 }
 
 const handleContextLost = (event: Event) => {
@@ -98,6 +104,11 @@ const the_loop = (): void => {
     requestAnimationFrame(the_loop);
   } else {
     setTimeout(the_loop, 100);
+  }
+
+  if (fireworkSystem.stop && fireworksStarted) {
+    fireworksStarted = false;
+    document.dispatchEvent(new Event('fireworksFinished'));
   }
 }
 

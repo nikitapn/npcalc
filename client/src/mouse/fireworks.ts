@@ -7,6 +7,7 @@ import { the_canvas } from 'mouse/gl'
 import { math } from 'mouse/math'
 import { array_fast_remove } from 'misc/utils';
 import { flatParticleSystem } from 'mouse/particle_system';
+import { soundManager } from 'mouse/sound_manager';
 
 export class Firework {
   position: vec2;
@@ -66,7 +67,8 @@ export class Firework {
 export class FireworkSystem {
   fireworks = new Array<Firework>();
   t: number = 100.0
-  stop: boolean = false;
+  timePassed: number = 0;
+  stop: boolean = true;
 
   private launchSomeFireworks(): void {
     let middle = the_canvas.clientWidth / 2;
@@ -104,7 +106,8 @@ export class FireworkSystem {
   }
 
    update(timer: Timer): void {
-    if (!this.stop && this.t > math.rand(3.0, 8.0)) {
+    this.timePassed += timer.dt;
+    if (!this.stop && this.t > math.rand(3.0, 8.0) && this.timePassed < 10.0) {
       this.launchSomeFireworks()
       this.t = 0;
     }
@@ -141,7 +144,8 @@ export class FireworkSystem {
           // Purple/magenta
           color = [math.rand(0.7, 1.0), math.rand(0, 0.5), math.rand(0.7, 1.0)];
         }
-        // this.soundManager.play();
+
+        soundManager.play();
 
         // Choose explosion pattern
         const pattern = math.randi(0, 4);
@@ -193,7 +197,7 @@ export class FireworkSystem {
     flatParticleSystem.update(timer.dt);
 
     this.t += timer.dt;
-    // this.stop = this.fireworks.length === 0;
+    this.stop = this.fireworks.length === 0;
   }
 }
 

@@ -8,12 +8,16 @@
   import Footer from 'gui/misc/Footer.svelte'
   import { fade } from 'svelte/transition'
   import { onMount, onDestroy } from 'svelte'
-  import { init as init_mouse, handleResize } from 'mouse/main'
+  import { init as init_mouse, handleResize, startFireworks } from 'mouse/main'
+  import SeizureWarning from 'gui/misc/SeizureWarning.svelte'
 
   export let content: HTMLDivElement;
 
   let canvas: HTMLCanvasElement;
   let resizeTimeout: number;
+  let showWarning = true;
+  let fireworksEnabled = false;
+  let showCalculator = false;
 
   const updateCanvasSize = () => {
     const newWidth = window.innerWidth;
@@ -25,17 +29,31 @@
     }
 
     resizeTimeout = window.setTimeout(async () => {
-      await handleResize(newWidth, newHeight);
+      if (fireworksEnabled) {
+        await handleResize(newWidth, newHeight);
+      }
     }, 250); // Wait 250ms after last resize event
   };
+
+  function onProceed(event: CustomEvent) {
+    fireworksEnabled = event.detail.withFireworks;
+    showWarning = false;
+    if (fireworksEnabled) {
+      startFireworks();
+    } else {
+      showCalculator = true;
+    }
+  }
 
   onMount(() => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     init_mouse(canvas);
-
-    // Listen for window resize
     window.addEventListener('resize', updateCanvasSize);
+
+    document.addEventListener('fireworksFinished', () => {
+      showCalculator = true;
+    });
   });
 
   onDestroy(() => {
@@ -100,14 +118,20 @@
     top: 0;
     left: 0;
     pointer-events:none;
-    z-index: 100;
-    /* opacity: 0.95; */
+    z-index: -1;
+  }
+
+  .hidden {
+    display: none;
   }
 </style>
 
 <div>
-  <canvas class="overflow" bind:this={canvas} width="800" height="600"></canvas>
-  <div transition:fade="{{duration: 5000}}">
+  <canvas class="overflow" bind:this={canvas}></canvas>
+  {#if showWarning}
+    <SeizureWarning on:proceed={onProceed} />
+  {/if}
+  <div class:hidden={!showCalculator}>
     <div bind:this={content} />
     <Footer />
   </div>
