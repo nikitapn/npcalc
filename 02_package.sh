@@ -9,7 +9,7 @@ cd $ROOT_DIR
 mkdir -p runtime/out
 
 docker run --rm \
-  -v $ROOT_DIR/${BUILD_DIR}/bin:/app \
+  -v $ROOT_DIR/${BUILD_DIR}/release:/app \
   -v $ROOT_DIR/docker/scripts:/cmd \
   -v $ROOT_DIR/runtime/out:/runtime \
   -w /cmd \

@@ -42,6 +42,7 @@ export const init = async (canvas: HTMLCanvasElement) => {
 }
 
 export function startFireworks() {
+  fireworkSystem.timePassed = 0;
   fireworkSystem.stop = false;
   fireworksStarted = true;
 }
@@ -107,7 +108,6 @@ const the_loop = (): void => {
   }
 
   if (fireworkSystem.stop && fireworksStarted) {
-    fireworkSystem.timePassed = 0;
     fireworksStarted = false;
     document.dispatchEvent(new Event('fireworksFinished'));
   }
