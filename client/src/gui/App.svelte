@@ -6,7 +6,6 @@
 
 <script lang="ts">
   import Footer from 'gui/misc/Footer.svelte'
-  import { fade } from 'svelte/transition'
   import { onMount, onDestroy } from 'svelte'
   import { init as init_mouse, handleResize, startFireworks } from 'mouse/main'
   import SeizureWarning from 'gui/misc/SeizureWarning.svelte'

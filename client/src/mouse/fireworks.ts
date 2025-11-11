@@ -107,7 +107,7 @@ export class FireworkSystem {
 
    update(timer: Timer): void {
     this.timePassed += timer.dt;
-    if (!this.stop && this.t > math.rand(3.0, 8.0) && this.timePassed < 10.0) {
+    if (!this.stop && this.t > math.rand(3.0, 8.0) && this.timePassed < 30.0) {
       this.launchSomeFireworks()
       this.t = 0;
     }
