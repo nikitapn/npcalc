@@ -5,7 +5,7 @@
 #include <sqlite3.h>
 #include <string>
 #include "Database.hpp"
-#include "nscalc_stub/nscalc.hpp"
+#include "nscalc.hpp"
 
 class SolutionService {
   std::shared_ptr<Database> db_;

@@ -1,4 +1,4 @@
-# Dockerfile.boost_1_83
+# Dockerfile.boost_1_89
 FROM debian:12
 
 # Install build tools and dependencies
@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set Boost version
-ARG BOOST_VERSION=1.83.0
-ARG BOOST_DIR=boost_1_83_0
+ARG BOOST_VERSION=1.89.0
+ARG BOOST_DIR=boost_1_89_0
 
 # Download and build Boost
 RUN wget https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_DIR}.tar.gz && \

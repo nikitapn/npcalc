@@ -9,3 +9,4 @@ certs/
 /docs/calculations/*
 !/docs/calculations/formula.tex
 !/docs/calculations/formula.pdf
+/deploy.sh

@@ -98,7 +98,8 @@
     "locale": "cpp",
     "__node_handle": "cpp",
     "execution": "cpp",
-    "print": "cpp"
+    "print": "cpp",
+    "__hash_table": "cpp"
   },
   "C_Cpp.default.cppStandard": "c++23",
   "C_Cpp.default.compileCommands": [

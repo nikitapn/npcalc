@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Observer.hpp"
-#include "nscalc_stub/nscalc.hpp"
+#include "nscalc.hpp"
 
 class DataObservers : public ObserversT<nscalc::DataObserver> {
   uint32_t alarm_id_ = 0;

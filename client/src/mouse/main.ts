@@ -107,6 +107,7 @@ const the_loop = (): void => {
   }
 
   if (fireworkSystem.stop && fireworksStarted) {
+    fireworkSystem.timePassed = 0;
     fireworksStarted = false;
     document.dispatchEvent(new Event('fireworksFinished'));
   }

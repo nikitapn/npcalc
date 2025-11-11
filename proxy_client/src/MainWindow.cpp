@@ -24,7 +24,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "proxy_stub/proxy.hpp"
+#include "proxy.hpp"
 
 //! [0]
 Window::Window()

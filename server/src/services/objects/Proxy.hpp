@@ -1,6 +1,6 @@
 #pragma once
 
-#include "proxy_stub/proxy.hpp"
+#include "proxy.hpp"
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 // header only boost/json library

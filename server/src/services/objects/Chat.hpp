@@ -2,7 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "nscalc_stub/nscalc.hpp"
+#include "nscalc.hpp"
 #include "services/client/Observer.hpp"
 
 class ChatImpl

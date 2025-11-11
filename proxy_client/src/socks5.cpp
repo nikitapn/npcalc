@@ -15,7 +15,7 @@
 #include <boost/beast/core.hpp>
 #include <nprpc/nprpc.hpp>
 
-#include <proxy_stub/proxy.hpp>
+#include "proxy.hpp"
 
 // SOCKS5 Protocol Constants
 enum class SOCKS5_AUTH : uint8_t {
