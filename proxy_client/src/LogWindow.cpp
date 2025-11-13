@@ -1,5 +1,6 @@
 #include "LogWindow.hpp"
 
+#include <iostream>
 #include <QTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -16,7 +17,8 @@
 #include <spdlog/sinks/qt_sinks.h>
 
 LogWindow::LogWindow(QWidget* parent)
-    : QWidget(parent), autoScroll_(true)
+    : QWidget(parent)
+    , autoScroll_(true)
 {
     // Make this a standalone window
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint | Qt::WindowMinMaxButtonsHint);
@@ -38,6 +40,11 @@ LogWindow::LogWindow(QWidget* parent)
 
     // Don't delete on close, just hide
     setAttribute(Qt::WA_DeleteOnClose, false);
+
+    logRedirectStdOut_ = std::move(std::make_unique<
+        nplib::SpdlogRedirect<char>>(std::cout, logger_));
+    logRedirectStdErr_ = std::move(std::make_unique<
+        nplib::SpdlogRedirect<char>>(std::cerr, logger_));
 }
 
 LogWindow::~LogWindow()

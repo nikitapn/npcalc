@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <memory>
 #include <spdlog/logger.h>
+#include <nplib/utils/spdlog_redirect.hpp>
 
 QT_BEGIN_NAMESPACE
 class QTextEdit;
@@ -50,5 +51,8 @@ private:
     QHBoxLayout* buttonLayout_;
     
     std::shared_ptr<spdlog::logger> logger_;
+    std::unique_ptr<nplib::SpdlogRedirect<char>> logRedirectStdOut_;
+    std::unique_ptr<nplib::SpdlogRedirect<char>> logRedirectStdErr_;
+
     bool autoScroll_;
 };
