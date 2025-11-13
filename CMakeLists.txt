@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.25.1)
 project(nscalc)
 
+if(DEFINED ENV{NPCALC_PROXY_DEFAULT_PWD})
+  add_definitions(-DNPCALC_PROXY_DEFAULT_PWD="$ENV{NPCALC_PROXY_DEFAULT_PWD}")
+endif()
+
 add_subdirectory(external/npsystem/3rd/spdlog)
 add_definitions(-DSPDLOG_COMPILED_LIB)
 include_directories(

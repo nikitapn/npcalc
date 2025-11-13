@@ -26,10 +26,14 @@
 
 #include "proxy.hpp"
 
+#ifndef NPCALC_PROXY_DEFAULT_PWD
+# define NPCALC_PROXY_DEFAULT_PWD "1234"
+#endif
+
 //! [0]
 Window::Window()
   : currentStatus_(ProxyStatus::Disconnected)
-  , actualPassword_("1234") // Default password
+  , actualPassword_(NPCALC_PROXY_DEFAULT_PWD) // Default password
 {
   // Create log window first (as independent window)
   logWindow_ = std::make_unique<LogWindow>(nullptr);
