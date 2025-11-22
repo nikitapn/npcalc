@@ -25,8 +25,9 @@
 html,
 body {
 	margin: 0;
-	background-color: #00000000;
+	background-color: #000000;
 	display: grid;
+	z-index: -2;
 }
 
 #page-container {

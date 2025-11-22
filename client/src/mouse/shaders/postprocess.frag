@@ -88,7 +88,7 @@ void main() {
         
         // Star glow
         float star = exp(-distToStar * 50.0) * brightness * twinkle;
-        star = smoothstep(0.0, 0.3, star);
+        star = smoothstep(0.0, 0.2, star);
         
         // Add star color (slight blue tint for distant stars)
         vec3 starColor = vec3(0.9, 0.95, 1.0);

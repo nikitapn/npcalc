@@ -43,7 +43,6 @@ export const init = async (canvas: HTMLCanvasElement) => {
 
 export function startFireworks() {
   fireworkSystem.timePassed = 0;
-  fireworkSystem.stop = false;
   fireworksStarted = true;
 }
 
@@ -101,13 +100,13 @@ const the_loop = (): void => {
 
   the_particle_renderer.render(timer.dt);
 
-  if (!fireworkSystem.stop) {
+  if (fireworkSystem.timePassed < 30) {
     requestAnimationFrame(the_loop);
   } else {
     setTimeout(the_loop, 100);
   }
 
-  if (fireworkSystem.stop && fireworksStarted) {
+  if (fireworkSystem.timePassed > 30 && fireworksStarted) {
     fireworksStarted = false;
     document.dispatchEvent(new Event('fireworksFinished'));
   }

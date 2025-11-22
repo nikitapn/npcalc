@@ -67,8 +67,7 @@ export class Firework {
 export class FireworkSystem {
   fireworks = new Array<Firework>();
   t: number = 100.0
-  timePassed: number = 0;
-  stop: boolean = true;
+  timePassed: number = 10000;
 
   private launchSomeFireworks(): void {
     let middle = the_canvas.clientWidth / 2;
@@ -107,7 +106,7 @@ export class FireworkSystem {
 
    update(timer: Timer): void {
     this.timePassed += timer.dt;
-    if (!this.stop && this.t > math.rand(3.0, 8.0) && this.timePassed < 30.0) {
+    if (this.t > math.rand(3.0, 8.0) && this.timePassed < 30.0) {
       this.launchSomeFireworks()
       this.t = 0;
     }
@@ -197,7 +196,6 @@ export class FireworkSystem {
     flatParticleSystem.update(timer.dt);
 
     this.t += timer.dt;
-    this.stop = this.fireworks.length === 0;
   }
 }
 

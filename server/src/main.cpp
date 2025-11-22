@@ -12,6 +12,7 @@
 #include <boost/program_options.hpp>
 #include <spdlog/spdlog.h>
 #include <nprpc/serialization/oarchive.h>
+#include <nplib/utils/spdlog_redirect.hpp>
 #include "services/db/UserService.hpp"
 #include "util/util.hpp"
 #include "services/boost/di.hpp"
