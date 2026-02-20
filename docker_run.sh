@@ -23,7 +23,7 @@ echo "🐳 Running Docker container as user $USER_NAME ($USER_ID:$GROUP_ID)"
 docker run --rm -it \
     --user "${USER_ID}:${GROUP_ID}" \
     -v "$ROOT_DIR:/app" \
-    -v "$(readlink -f external/npsystem):/app/external/npsystem" \
+    -v "$(readlink -f external/nprpc):/app/external/nprpc" \
     -w /app \
     -e HOME=/tmp \
     "$IMAGE" \

@@ -6,8 +6,8 @@
 #include <sstream>
 
 // Include the serialization headers
-#include "external/npsystem/nprpc/include/nprpc/serialization/serialization.h"
-#include "external/npsystem/nprpc/include/nprpc/serialization/oarchive.h"
+#include "external/nprpc/nprpc/include/nprpc/serialization/serialization.h"
+#include "external/nprpc/nprpc/include/nprpc/serialization/oarchive.h"
 
 using namespace nprpc::serialization;
 

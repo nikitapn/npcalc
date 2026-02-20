@@ -19,8 +19,8 @@ docker run --rm \
 set -ex
 
 cp ${BUILD_DIR}/release/nscalc runtime/out
-cp ${BUILD_DIR}/external/npsystem/nplib/libnplib.so runtime/out
-cp ${BUILD_DIR}/external/npsystem/nprpc/libnprpc.so runtime/out
+cp ${BUILD_DIR}/external/nprpc/nplib/libnplib.so runtime/out
+cp ${BUILD_DIR}/external/nprpc/nprpc/libnprpc.so runtime/out
 cp docker/Dockerfile.runtime runtime/out
 
 cd runtime

@@ -5,10 +5,10 @@ if(DEFINED ENV{NPCALC_PROXY_DEFAULT_PWD})
   add_definitions(-DNPCALC_PROXY_DEFAULT_PWD="$ENV{NPCALC_PROXY_DEFAULT_PWD}")
 endif()
 
-add_subdirectory(external/npsystem/3rd/spdlog)
+add_subdirectory(external/nprpc/3rd/spdlog)
 add_definitions(-DSPDLOG_COMPILED_LIB)
 include_directories(
-    external/npsystem/3rd/glaze/include
+    external/nprpc/3rd/glaze/include
 )
 
 option(OPT_BUILD_PROXY_CLIENT "Build the proxy client" ON)
@@ -86,16 +86,16 @@ else()
 endif()
 
 include_directories(
-  "${CMAKE_SOURCE_DIR}/external/npsystem/nprpc/include"
-  "${CMAKE_SOURCE_DIR}/external/npsystem/nplib/include"
+  "${CMAKE_SOURCE_DIR}/external/nprpc/nprpc/include"
+  "${CMAKE_SOURCE_DIR}/external/nprpc/nplib/include"
 )
 
-add_subdirectory(external/npsystem/nplib)
-add_subdirectory(external/npsystem/nprpc)
+add_subdirectory(external/nprpc/nplib)
+add_subdirectory(external/nprpc/nprpc)
 
 add_dependencies(nprpc nplib)
 
-include(external/npsystem/nprpc/cmake/npidl.cmake)
+include(external/nprpc/nprpc/cmake/npidl.cmake)
 
 if (UNIX)
   npidl_generate_idl_files("${CMAKE_SOURCE_DIR}/idl/nscalc.npidl" nscalc_stub)

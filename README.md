@@ -101,7 +101,7 @@ nscalc/
 │       ├── main.cpp     # Proxy client entry
 │       ├── socks5.cpp   # SOCKS5 implementation
 │       └── MainWindow.* # Qt GUI (if applicable)
-├── external/npsystem/   # NPRPC framework
+├── external/nprpc/   # NPRPC framework
 ├── idl/                 # Interface definitions
 ├── docs/                # Documentation
 ├── certs/               # SSL certificates

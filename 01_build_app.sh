@@ -9,7 +9,7 @@ cd $ROOT_DIR
 
 docker run --rm \
   -v $ROOT_DIR:/app \
-  -v $(readlink -f external/npsystem):/app/external/npsystem \
+  -v $(readlink -f external/nprpc):/app/external/nprpc \
   -w /app cpp-dev-env:latest \
   cmake -G "Ninja" -B $BUILD_DIR \
     -DBOOST_LIB_PREFIX=/usr/local/lib \
@@ -18,6 +18,6 @@ docker run --rm \
 
 docker run --rm \
   -v $ROOT_DIR:/app \
-  -v $(readlink -f external/npsystem):/app/external/npsystem \
+  -v $(readlink -f external/nprpc):/app/external/nprpc \
   -w /app cpp-dev-env:latest \
   cmake --build $BUILD_DIR -j$(nproc)

@@ -4,7 +4,7 @@ set -e
 
 cd $(dirname $(readlink -e ${BASH_SOURCE[0]}))
 
-[ ! -L "external/npsystem" ] && ln -s $(readlink -f ../npsystem) external/npsystem
+[ ! -L "external/nprpc" ] && ln -s $(readlink -f ../nprpc) external/nprpc
 
 # Get current user ID and group ID to pass to Docker
 USER_ID=$(id -u)
