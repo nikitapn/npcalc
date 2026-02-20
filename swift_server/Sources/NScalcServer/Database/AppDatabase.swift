@@ -1,0 +1,105 @@
+// Copyright (c) 2025 nikitapnn1@gmail.com
+// Manages the SQLite connection and schema migrations.
+
+import Foundation
+import GRDB
+
+// MARK: - AppDatabase
+
+/// Thin wrapper around a GRDB `DatabaseQueue`.
+///
+/// `DatabaseQueue` serialises all reads and writes on a single connection,
+/// matching the `SQLITE_CONFIG_SERIALIZED` requirement the C++ server verifies.
+/// It is `Sendable`, so it is safe to pass across Swift 6 actor boundaries.
+final class AppDatabase: Sendable {
+    let dbQueue: DatabaseQueue
+
+    init(path: String) throws {
+        var config = Configuration()
+        config.foreignKeysEnabled = true      // equivalent to PRAGMA foreign_keys = ON
+        config.label = "NScalcDB"
+
+        dbQueue = try DatabaseQueue(path: path, configuration: config)
+        try runMigrations()
+    }
+
+    // In-memory database — useful for tests.
+    static func makeShared() throws -> AppDatabase {
+        try AppDatabase(path: ":memory:")
+    }
+
+    // MARK: - Migrations
+
+    private func runMigrations() throws {
+        var migrator = DatabaseMigrator()
+
+        // v1 — initial schema (mirrors database/create.sql)
+        migrator.registerMigration("v1") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS User (
+                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name        TEXT    NOT NULL,
+                  pwd         BLOB,
+                  email       TEXT    NOT NULL UNIQUE,
+                  permissions INTEGER DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS UserSession (
+                  sessionId TEXT PRIMARY KEY,
+                  userId    INTEGER NOT NULL,
+                  FOREIGN KEY (userId) REFERENCES User (id)
+                );
+
+                CREATE TABLE IF NOT EXISTS Calculation (
+                  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                  userId         INTEGER NOT NULL,
+                  name           TEXT    NOT NULL,
+                  elements       TEXT,
+                  fertilizersIds TEXT,
+                  volume         REAL    NOT NULL,
+                  mode           BOOLEAN NOT NULL,
+                  FOREIGN KEY (userId) REFERENCES User (id)
+                );
+
+                CREATE INDEX IF NOT EXISTS Calculation_userId ON Calculation (userId);
+
+                CREATE TABLE IF NOT EXISTS Solution (
+                  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                  userId INTEGER NOT NULL,
+                  name   TEXT    NOT NULL,
+                  NO3    REAL,  NH4 REAL,  P   REAL,  K   REAL,
+                  Ca     REAL,  Mg  REAL,  S   REAL,  Cl  REAL,
+                  Fe     REAL,  Zn  REAL,  B   REAL,  Mn  REAL,
+                  Cu     REAL,  Mo  REAL,
+                  FOREIGN KEY (userId) REFERENCES User (id)
+                );
+
+                CREATE INDEX IF NOT EXISTS Solution_userId ON Solution (userId);
+
+                CREATE TABLE IF NOT EXISTS Fertilizer (
+                  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                  userId INTEGER NOT NULL,
+                  name   TEXT    NOT NULL,
+                  formula TEXT,
+                  FOREIGN KEY (userId) REFERENCES User (id)
+                );
+            """)
+
+            // Seed built-in accounts (INSERT OR IGNORE = safe on existing databases)
+            // Passwords are SHA-256 blobs stored as hex:
+            //   superuser → "1234"   (03AC674216F3E15C761EE1A5E255F067953623C8B388B4459E13F978D7C846F4)
+            //   guest     → complex  (AB6E4C3DD47810AE0ABC821A2DE8A25B38C1DF86B49CDEFCB58C4A55F9923902)
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO User (id, name, pwd, email, permissions) VALUES
+                  (1, 'superuser',
+                   X'03AC674216F3E15C761EE1A5E255F067953623C8B388B4459E13F978D7C846F4',
+                   'superuser@nscalc.com', 3),
+                  (2, 'guest',
+                   X'AB6E4C3DD47810AE0ABC821A2DE8A25B38C1DF86B49CDEFCB58C4A55F9923902',
+                   'guest@nscalc.com', 0);
+            """)
+        }
+
+        try migrator.migrate(dbQueue)
+    }
+}

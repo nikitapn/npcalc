@@ -1,0 +1,35 @@
+FROM nprpc-dev:latest AS nscalc-builder
+
+USER root
+
+# Build SQLite from the amalgamation with SQLITE_ENABLE_SNAPSHOT enabled.
+# The Ubuntu package omits this flag, which causes GRDB's WALSnapshot to fail
+# to link (undefined reference to sqlite3_snapshot_cmp / _get / _open / _free).
+RUN set -e \
+ && apt-get update && apt-get install -y wget unzip gcc \
+ && rm -rf /var/lib/apt/lists/* \
+ && cd /tmp \
+ && wget -q https://www.sqlite.org/2024/sqlite-amalgamation-3470000.zip \
+ && unzip -q sqlite-amalgamation-3470000.zip \
+ && cd sqlite-amalgamation-3470000 \
+ # Shared library (replaces the system libsqlite3.so)
+ && gcc -O2 -fPIC -shared \
+      -DSQLITE_ENABLE_SNAPSHOT \
+      -DSQLITE_THREADSAFE=1 \
+      -DSQLITE_ENABLE_FTS5 \
+      -DSQLITE_ENABLE_JSON1 \
+      -DSQLITE_ENABLE_RTREE \
+      -o libsqlite3.so.0 sqlite3.c \
+ && install -m 755 libsqlite3.so.0 /usr/lib/$(uname -m)-linux-gnu/libsqlite3.so.0 \
+ && ln -sf libsqlite3.so.0 /usr/lib/$(uname -m)-linux-gnu/libsqlite3.so \
+ # CLI tool (shell.c is the sqlite3 command-line program in the amalgamation zip)
+ && gcc -O2 -DSQLITE_ENABLE_SNAPSHOT -DSQLITE_THREADSAFE=1 \
+      sqlite3.c shell.c -lpthread -ldl -o /usr/bin/sqlite3 \
+ && cp sqlite3.h /usr/include/ \
+ && ldconfig \
+ && cd / && rm -rf /tmp/sqlite-amalgamation-3470000*
+
+USER ubuntu
+WORKDIR /project
+
+CMD ["/bin/bash"]
