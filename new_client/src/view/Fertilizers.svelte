@@ -1,85 +1,55 @@
 <script lang="ts">
-import { onMount } from "svelte";
+  import Virtual from "./Virtual.svelte";
+  import { mockFertilizers, type FertilizerCardData } from "../lib/mockData";
 
-// Mock data for fertilizers
-let fertilizers = Array.from({ length: 50 }, (_, i) => ({
-  id: i,
-  name: `Fertilizer #${i + 1}`,
-  author: i % 2 === 0 ? "User A" : "User B",
-  cost: (Math.random() * 100).toFixed(2),
-  elements: {
-    N: (Math.random() * 10).toFixed(2),
-    P: (Math.random() * 5).toFixed(2),
-    K: (Math.random() * 15).toFixed(2),
-    Ca: (Math.random() * 8).toFixed(2),
-    Mg: (Math.random() * 4).toFixed(2),
-    S: (Math.random() * 6).toFixed(2),
-  },
-}));
+  let search = $state("");
 
-onMount(() => {
-  // Any initialization logic if needed
-});
+  const filteredFertilizers = $derived.by(() => {
+    const query = search.trim().toLowerCase();
+    return mockFertilizers.filter((fertilizer: FertilizerCardData) => query.length === 0 || fertilizer.name.toLowerCase().includes(query));
+  });
 </script>
 
-<div class="fertilizers-container">
-  {#each fertilizers as fertilizer (fertilizer.id)}
-    <div class="fertilizer-card">
-      <div class="header">
-        <h3>{fertilizer.name}</h3>
-        <p>Author: {fertilizer.author}</p>
-      </div>
-      <div class="content">
-        <p>Cost: ${fertilizer.cost}</p>
-        <ul>
-          {#each Object.entries(fertilizer.elements) as [key, value]}
-            <li>{key}: {value}%</li>
-          {/each}
-        </ul>
-      </div>
+<section class="space-y-5">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Fertilizer shelf</p>
+      <h2 class="mt-2 text-2xl font-semibold text-white sm:text-3xl">Cards stay legible on phones and can scale into a denser product grid.</h2>
     </div>
-  {/each}
-</div>
+    <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/80 lg:min-w-[18rem]">
+      Search products
+      <input bind:value={search} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" placeholder="Magnesium, sulfate, nitrate..." />
+    </label>
+  </div>
 
-<style lang="scss">
-.fertilizers-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1rem;
-  padding: 1rem;
-}
+  <Virtual
+    items={filteredFertilizers}
+    itemHeight={250}
+    minColumnWidth={280}
+    gap={18}
+    viewportClass="h-[62vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
+    getKey={(fertilizer) => (fertilizer as FertilizerCardData).id}
+  >
+    {#snippet children(fertilizer)}
+      <article class="panel-surface hairline h-full rounded-[1.75rem] p-4">
+        <div class="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Product card</p>
+            <h3 class="mt-1 truncate text-lg font-semibold text-white">{fertilizer.name}</h3>
+            <p class="mt-1 text-sm text-ocean-100/70">by {fertilizer.author}</p>
+          </div>
+          <span class="rounded-full border border-sand-200/25 bg-sand-200/10 px-3 py-1 text-xs font-medium text-sand-100">${fertilizer.cost}</span>
+        </div>
 
-.fertilizer-card {
-  background: #f9f9f9;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.header {
-  margin-bottom: 1rem;
-}
-
-.header h3 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.header p {
-  margin: 0;
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.content ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.content ul li {
-  font-size: 0.9rem;
-  color: #333;
-}
-</style>
+        <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+          {#each Object.entries(fertilizer.elements) as [name, value]}
+            <div class="rounded-2xl bg-black/20 px-3 py-2">
+              <dt class="text-ocean-100/65">{name}</dt>
+              <dd class="mt-1 font-semibold text-white">{value}%</dd>
+            </div>
+          {/each}
+        </dl>
+      </article>
+    {/snippet}
+  </Virtual>
+</section>

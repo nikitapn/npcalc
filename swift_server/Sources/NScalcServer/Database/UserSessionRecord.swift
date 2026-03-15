@@ -63,7 +63,7 @@ struct SessionService: Sendable {
     }
 
     func deleteSession(_ sessionId: String) throws {
-        try db.dbQueue.write { db in
+        _ = try db.dbQueue.write { db in
             try UserSessionRecord
                 .filter(Column("sessionId") == sessionId)
                 .deleteAll(db)

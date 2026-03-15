@@ -1,73 +1,62 @@
 <script lang="ts">
-import Solution from "./Solution.svelte";
-import Virtual from "./Virtual.svelte";
-import { onMount } from "svelte";
+  import Solution from "./Solution.svelte";
+  import Virtual from "./Virtual.svelte";
+  import { mockSolutions, type SolutionCardData } from "../lib/mockData";
 
-// Mock data for solutions
-let solutions = Array.from({ length: 100 }, (_, i) => ({
-  id: i,
-  name: `Solution #${i + 1}`,
-  author: i % 2 === 0 ? "User A" : "User B",
-  elements: {
-    NO3: Math.round(Math.random() * 100),
-    NH4: Math.round(Math.random() * 10),
-    P: Math.round(Math.random() * 50),
-    K: Math.round(Math.random() * 200),
-    Ca: Math.round(Math.random() * 50),
-    Mg: Math.round(Math.random() * 20),
-    S: Math.round(Math.random() * 30),
-    Cl: Math.round(Math.random() * 10),
-    Fe: Math.round(Math.random() * 5),
-    Zn: Math.round(Math.random() * 5),
-    B: Math.round(Math.random() * 5),
-    Mn: Math.round(Math.random() * 5),
-    Cu: Math.round(Math.random() * 5),
-    Mo: Math.round(Math.random() * 5),
-  },
-  ratios: {
-    NH4Percent: (Math.random() * 10).toFixed(1),
-    NK: (Math.random() * 5).toFixed(2),
-    KCa: (Math.random() * 5).toFixed(2),
-    KMg: (Math.random() * 5).toFixed(2),
-    CaMg: (Math.random() * 5).toFixed(2),
-    delta: (Math.random() * 2 - 1).toFixed(2),
-    EC: (Math.random() * 3).toFixed(2),
-  },
-}));
+  let search = $state("");
+  let author = $state("all");
 
-let start = 0;
-let end = 0;
+  const authors = Array.from(new Set(mockSolutions.map((solution: SolutionCardData) => solution.author)));
+  const filteredSolutions = $derived.by(() => {
+    const query = search.trim().toLowerCase();
 
-onMount(() => {
-  // Any initialization logic if needed
-});
+    return mockSolutions.filter((solution: SolutionCardData) => {
+      const matchesName = query.length === 0 || solution.name.toLowerCase().includes(query);
+      const matchesAuthor = author === "all" || solution.author === author;
+      return matchesName && matchesAuthor;
+    });
+  });
 </script>
 
-<div class="solutions-container">
-  <Virtual items={solutions} bind:start bind:end let:item>
-    <Solution
-      name={item.name}
-      owner={item.author}
-      elements={item.elements}
-      ratios={item.ratios}
-    />
+<section class="space-y-5">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Solution library</p>
+      <h2 class="mt-2 text-2xl font-semibold text-white sm:text-3xl">Scroll comfortably on phones without losing density on desktop.</h2>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-sm text-ocean-100/75">
+      <span class="rounded-full bg-white/6 px-3 py-1.5">{filteredSolutions.length} visible</span>
+      <span class="rounded-full bg-white/6 px-3 py-1.5">{mockSolutions.length} total</span>
+    </div>
+  </div>
+
+  <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem]">
+    <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/80">
+      Search by name
+      <input bind:value={search} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" placeholder="Calcium, cucumber, bloom..." />
+    </label>
+
+    <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/80">
+      Author
+      <select bind:value={author} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none transition focus:border-ocean-300 focus:bg-black/30">
+        <option value="all">All authors</option>
+        {#each authors as authorName}
+          <option value={authorName}>{authorName}</option>
+        {/each}
+      </select>
+    </label>
+  </div>
+
+  <Virtual
+    items={filteredSolutions}
+    itemHeight={372}
+    minColumnWidth={320}
+    gap={18}
+    viewportClass="h-[68vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
+    getKey={(solution) => (solution as SolutionCardData).id}
+  >
+    {#snippet children(solution, index)}
+      <Solution {solution} {index} />
+    {/snippet}
   </Virtual>
-</div>
-
-<p class="summary">Showing {start + 1}-{end} of {solutions.length} solutions</p>
-
-<style lang="scss">
-.solutions-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1rem;
-  padding: 1rem;
-}
-
-.summary {
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  color: #666;
-}
-</style>
+</section>

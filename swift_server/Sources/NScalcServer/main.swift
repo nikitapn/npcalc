@@ -58,6 +58,7 @@ do {
     let httpPort: UInt16 = 8443
     let wwwRoot  = "/app/runtime/www"
     let dbPath   = "/app/sample_data/nscalc.db"
+    let hostJsonOutputPath = wwwRoot + "/host.json"
 
     // Open (and migrate if needed) the SQLite database.
     let appDB = try AppDatabase(path: dbPath)
@@ -76,14 +77,28 @@ do {
 
     let poa  = try rpc.createPoa(maxObjects: 10, lifetime: .persistent, idPolicy: .userSupplied)
     let calc = CalculatorServantImpl(db: appDB)
-    let _    = try poa.activateObjectWithId(objectId: UInt64(0), servant: calc, flags: .allowAll)
+    let calcOid = try poa.activateObjectWithId(objectId: UInt64(0), servant: calc, flags: .allowAll)
+
+    let authorizator = try AuthorizatorImpl(rpc: rpc, db: appDB)
+    let authOid = try poa.activateObjectWithId(objectId: UInt64(1), servant: authorizator, flags: .allowAll)
 
     let chat = ChatServantImpl()
-    let oid    = try poa.activateObjectWithId(objectId: UInt64(1), servant: chat, flags: .allowAll)
+    let chatOid = try poa.activateObjectWithId(objectId: UInt64(4), servant: chat, flags: .allowAll)
 
-    print("Activated ChatServant with oid: \(oid)")
+    let realtime = RealtimeServantImpl()
+    let realtimeOid = try poa.activateObjectWithId(objectId: UInt64(5), servant: realtime, flags: .allowAll)
 
-    // TODO: wire up Authorizator and RegisteredUser servants
+        rpc.clearHostJson()
+        try rpc.addToHostJson(name: "calculator", objectId: calcOid)
+        try rpc.addToHostJson(name: "authorizator", objectId: authOid)
+        try rpc.addToHostJson(name: "chat", objectId: chatOid)
+        try rpc.addToHostJson(name: "realtime", objectId: realtimeOid)
+        let hostJsonPath = try rpc.produceHostJson(outputPath: hostJsonOutputPath)
+
+    print("Activated Authorizator with oid: \(authOid)")
+    print("Activated ChatServant with oid: \(chatOid)")
+    print("Activated RealtimeServant with oid: \(realtimeOid)")
+        print("host.json: \(hostJsonPath)")
 
     // Set up signal handling for graceful shutdown
     let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
@@ -103,7 +118,7 @@ do {
 
 } catch {
     // Use nonisolated stderr access (Swift 6 strict concurrency workaround)
-    var standardError = FileHandle.standardError
+    let standardError = FileHandle.standardError
     let msg = "Fatal: \(error)\n"
     standardError.write(Data(msg.utf8))
     exit(1)

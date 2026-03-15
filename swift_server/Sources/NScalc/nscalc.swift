@@ -634,6 +634,106 @@ public func unmarshal_Footstep(buffer: UnsafeRawPointer, offset: Int) -> Footste
   return result
 }
 
+public struct RealtimeClientEvent: Codable, Sendable {
+  public var footstep: Footstep? = nil
+
+  public init() {}
+
+  public init(footstep: Footstep?)   {
+    self.footstep = footstep
+  }
+}
+
+
+// MARK: - Marshal RealtimeClientEvent
+public func marshal_RealtimeClientEvent(buffer: FlatBuffer, offset: Int, data: RealtimeClientEvent) {
+  guard let buf = buffer.data else { return }
+  if let value = data.footstep {
+    NPRPC.marshal_optional_struct(buffer: buffer, offset: offset + 0, value: value) { buf, off in
+      marshal_Footstep(buffer: buf, offset: off, data: value)
+    }
+  } else {
+    buf.storeBytes(of: UInt32(0), toByteOffset: offset + 0, as: UInt32.self)
+  }
+}
+
+// MARK: - Unmarshal RealtimeClientEvent
+public func unmarshal_RealtimeClientEvent(buffer: UnsafeRawPointer, offset: Int) -> RealtimeClientEvent {
+  var result = RealtimeClientEvent()
+  if buffer.load(fromByteOffset: offset + 0, as: UInt32.self) != 0 {
+    result.footstep = NPRPC.unmarshal_optional_struct(buffer: buffer, offset: offset + 0) { buf, off in
+      return unmarshal_Footstep(buffer: buf, offset: off)
+    }
+  } else {
+    result.footstep = nil
+  }
+  return result
+}
+
+public struct RealtimeServerEvent: Codable, Sendable {
+  public var data_changed_idx: UInt32? = nil
+  public var alarm: Alarm? = nil
+  public var footstep: Footstep? = nil
+
+  public init() {}
+
+  public init(data_changed_idx: UInt32?, alarm: Alarm?, footstep: Footstep?)   {
+    self.data_changed_idx = data_changed_idx
+    self.alarm = alarm
+    self.footstep = footstep
+  }
+}
+
+
+// MARK: - Marshal RealtimeServerEvent
+public func marshal_RealtimeServerEvent(buffer: FlatBuffer, offset: Int, data: RealtimeServerEvent) {
+  guard let buf = buffer.data else { return }
+  if let value = data.data_changed_idx {
+    NPRPC.marshal_optional_fundamental(buffer: buffer, offset: offset + 0, value: value)
+  } else {
+    buf.storeBytes(of: UInt32(0), toByteOffset: offset + 0, as: UInt32.self)
+  }
+  if let value = data.alarm {
+    NPRPC.marshal_optional_struct(buffer: buffer, offset: offset + 4, value: value) { buf, off in
+      marshal_Alarm(buffer: buf, offset: off, data: value)
+    }
+  } else {
+    buf.storeBytes(of: UInt32(0), toByteOffset: offset + 4, as: UInt32.self)
+  }
+  if let value = data.footstep {
+    NPRPC.marshal_optional_struct(buffer: buffer, offset: offset + 8, value: value) { buf, off in
+      marshal_Footstep(buffer: buf, offset: off, data: value)
+    }
+  } else {
+    buf.storeBytes(of: UInt32(0), toByteOffset: offset + 8, as: UInt32.self)
+  }
+}
+
+// MARK: - Unmarshal RealtimeServerEvent
+public func unmarshal_RealtimeServerEvent(buffer: UnsafeRawPointer, offset: Int) -> RealtimeServerEvent {
+  var result = RealtimeServerEvent()
+  if buffer.load(fromByteOffset: offset + 0, as: UInt32.self) != 0 {
+    result.data_changed_idx = NPRPC.unmarshal_optional_fundamental(buffer: buffer, offset: offset + 0)
+  } else {
+    result.data_changed_idx = nil
+  }
+  if buffer.load(fromByteOffset: offset + 4, as: UInt32.self) != 0 {
+    result.alarm = NPRPC.unmarshal_optional_struct(buffer: buffer, offset: offset + 4) { buf, off in
+      return unmarshal_Alarm(buffer: buf, offset: off)
+    }
+  } else {
+    result.alarm = nil
+  }
+  if buffer.load(fromByteOffset: offset + 8, as: UInt32.self) != 0 {
+    result.footstep = NPRPC.unmarshal_optional_struct(buffer: buffer, offset: offset + 8) { buf, off in
+      return unmarshal_Footstep(buffer: buf, offset: off)
+    }
+  } else {
+    result.footstep = nil
+  }
+  return result
+}
+
 fileprivate struct nscalc_M1: Codable, Sendable {
   public var _1: String = ""
   public var _2: String = ""
@@ -2551,55 +2651,136 @@ open class DataObserverServant: NPRPCServant, DataObserverProtocol, @unchecked S
   } // dispatch
 }
 
-fileprivate struct nscalc_M15: Codable, Sendable {
-  public var _1: NPRPCObject = NPRPCObject()
+public protocol RealtimeProtocol {
+  func connect(session_id: String, stream: NPRPCBidiStream<RealtimeServerEvent, RealtimeClientEvent>) async
+}
 
-  public init() {}
-
-  public init(_1: NPRPCObject)   {
-    self._1 = _1
+// Client proxy for Realtime
+// Pure Swift implementation with direct marshalling
+final public class Realtime: NPRPCObject, @unchecked Sendable {
+  public override class var classId: String {
+    "nscalc/nscalc.Realtime"
   }
-}
 
-
-// MARK: - Marshal nscalc_M15
-fileprivate func marshal_nscalc_M15(buffer: FlatBuffer, offset: Int, data: nscalc_M15) {
-  detail.marshal_ObjectId(buffer: buffer, offset: offset + 0, data: data._1.data)
-}
-
-// MARK: - Unmarshal nscalc_M15
-fileprivate func unmarshal_nscalc_M15(buffer: UnsafeRawPointer, offset: Int, endpoint: NPRPCEndpoint) throws -> nscalc_M15 {
-  var result = nscalc_M15()
-  result._1 = try NPRPC.unmarshal_object_proxy(buffer: buffer, offset: offset + 0, endpoint: endpoint)
-  return result
-}
-
-fileprivate struct nscalc_M16: Codable, Sendable {
-  public var _1: ChatMessage = ChatMessage()
-
-  public init() {}
-
-  public init(_1: ChatMessage)   {
-    self._1 = _1
+  public required init(handle: UnsafeMutableRawPointer)   {
+    super.init(handle: handle)
   }
+
+  public required init(from decoder: Decoder) throws   {
+    try super.init(from: decoder)
+  }
+
+  public func connect(session_id: String) throws -> NPRPCBidiStream<RealtimeClientEvent, RealtimeServerEvent>   {
+    let streamId = nprpc_generate_stream_id()
+
+    // Prepare StreamInit buffer
+    let buffer = FlatBuffer()
+    buffer.prepare(184)
+    buffer.commit(56)
+    guard let data = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
+
+    // Write StreamInit message header
+    data.storeBytes(of: UInt32(0), toByteOffset: 0, as: UInt32.self)  // size (set later)
+    data.storeBytes(of: impl.MessageId.streamInitialization.rawValue, toByteOffset: 4, as: UInt32.self)
+    data.storeBytes(of: impl.MessageType.request.rawValue, toByteOffset: 8, as: UInt32.self)
+    data.storeBytes(of: UInt32(0), toByteOffset: 12, as: UInt32.self)  // reserved
+
+    // Write StreamInit fields
+    data.storeBytes(of: streamId, toByteOffset: 16, as: UInt64.self)  // offset 0
+    data.storeBytes(of: poaIdx, toByteOffset: 24, as: UInt16.self)  // offset 8
+    data.storeBytes(of: UInt8(0), toByteOffset: 26, as: UInt8.self)  // interface_idx at offset 10
+    data.storeBytes(of: objectId, toByteOffset: 32, as: UInt64.self)  // offset 16 (after 5-byte pad)
+    data.storeBytes(of: UInt8(0), toByteOffset: 40, as: UInt8.self)  // func_idx at offset 24
+    data.storeBytes(of: impl.StreamKind.bidi.rawValue, toByteOffset: 41, as: UInt8.self)
+
+    // Marshal input arguments
+    var inArgs = nscalc_M3()
+    inArgs._1 = session_id
+    marshal_nscalc_M3(buffer: buffer, offset: 48, data: inArgs)
+
+    guard let finalData = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
+    finalData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
+
+    guard let session = nprpc_object_get_session(self.handle),
+          let streamManager = nprpc_session_get_stream_manager(session) else {
+      throw RuntimeError(message: "Failed to get session for stream")
+    }
+
+    let stream = NPRPC.createStreamManagerBidiStream(streamManager: streamManager, streamId: streamId, buffer: buffer, initialPayloadCapacity: 132, unreliable: false, serializer: { (buffer: FlatBuffer, offset: Int, value: RealtimeClientEvent) in NPRPC.marshal_stream_struct(buffer: buffer, offset: offset, rootSize: 4, value: value) { buf, off, elem in marshal_RealtimeClientEvent(buffer: buf, offset: off, data: elem) } }, deserializer: { (data: UnsafeRawPointer, _: Int) in unmarshal_RealtimeServerEvent(buffer: data, offset: 0) })
+    let result = nprpc_session_stream_send_init(session, buffer.handle, self.timeout)
+    if result != 0 { throw RuntimeError(message: "StreamInit failed (code: \(result))") }
+    return stream
+  }
+
 }
 
+// Servant base for Realtime
+open class RealtimeServant: NPRPCServant, RealtimeProtocol, @unchecked Sendable {
+  public override init() { super.init() }
 
-// MARK: - Marshal nscalc_M16
-fileprivate func marshal_nscalc_M16(buffer: FlatBuffer, offset: Int, data: nscalc_M16) {
-  marshal_ChatMessage(buffer: buffer, offset: offset + 0, data: data._1)
-}
+  public override func getClass() -> String   {
+    return "nscalc/nscalc.Realtime"
+  }
 
-// MARK: - Unmarshal nscalc_M16
-fileprivate func unmarshal_nscalc_M16(buffer: UnsafeRawPointer, offset: Int) -> nscalc_M16 {
-  var result = nscalc_M16()
-  result._1 = unmarshal_ChatMessage(buffer: buffer, offset: offset + 0)
-  return result
+  open func connect(session_id: String, stream: NPRPCBidiStream<RealtimeServerEvent, RealtimeClientEvent>) async   {
+    fatalError("Subclass must implement connect")
+  }
+
+  // Dispatch incoming RPC calls
+  public override func dispatch(buffer: FlatBuffer, remoteEndpoint: NPRPCEndpoint)   {
+    guard let data = buffer.data else { return }
+
+    // Check message type to route streaming vs regular calls
+    let msgId = data.load(fromByteOffset: MemoryLayout<NPRPC.impl.Header>.offset(of: \NPRPC.impl.Header.msg_id)!, as: UInt32.self)
+
+    if msgId == impl.MessageId.streamInitialization.rawValue     {
+      let streamFuncIdx = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.StreamInit>.offset(of: \NPRPC.impl.StreamInit.func_idx)!), as: UInt8.self)
+      switch streamFuncIdx       {
+        case 0: // Connect
+          // Streaming method dispatch
+          guard let data = buffer.data else { return }
+          let streamId = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.StreamInit>.offset(of: \NPRPC.impl.StreamInit.stream_id)!), as: UInt64.self)
+
+          // Validate input buffer for untrusted interface
+          guard check_1S(buffer: data, bufferSize: buffer.size, offset: 48) else           {
+            makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
+            return
+          }
+
+          // Unmarshal input arguments
+          let ia = unmarshal_nscalc_M3(buffer: data, offset: 48)
+
+          // Get stream_manager for streaming (heap-allocated, survives after dispatch returns)
+          guard let sessionCtx = self.sessionContext,
+                let streamManager = nprpc_get_stream_manager(sessionCtx) else {
+            makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
+            return
+          }
+          let stream = NPRPC.createStreamManagerBidiStream(streamManager: streamManager, streamId: streamId, buffer: buffer, initialPayloadCapacity: 140, unreliable: false, serializer: { (buffer: FlatBuffer, offset: Int, value: RealtimeServerEvent) in NPRPC.marshal_stream_struct(buffer: buffer, offset: offset, rootSize: 12, value: value) { buf, off, elem in marshal_RealtimeServerEvent(buffer: buf, offset: off, data: elem) } }, deserializer: { (data: UnsafeRawPointer, _: Int) in unmarshal_RealtimeClientEvent(buffer: data, offset: 0) })
+          nprpc_stream_manager_defer_stream_start(streamManager, streamId)
+          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.success)
+          Task {
+            await connect(session_id: ia._1, stream: stream)
+          }
+
+        default:
+          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_UnknownFunctionIdx)
+      } // switch streamFuncIdx
+      return
+    }
+
+    // Read function index from CallHeader
+    let functionIdx = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.CallHeader>.offset(of: \NPRPC.impl.CallHeader.function_idx)!), as: UInt8.self)
+
+    switch functionIdx     {
+      default:
+        makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_UnknownFunctionIdx)
+    } // switch
+  } // dispatch
 }
 
 public protocol ChatProtocol {
-  func connect(obj: NPRPCObject)
-  func send(msg: ChatMessage) -> Bool
+  func connect(session_id: String, stream: NPRPCBidiStream<ChatMessage, ChatMessage>) async
 }
 
 // Client proxy for Chat
@@ -2617,78 +2798,46 @@ final public class Chat: NPRPCObject, @unchecked Sendable {
     try super.init(from: decoder)
   }
 
-  public func connect(obj: NPRPCObject) throws   {
-    // Prepare buffer
+  public func connect(session_id: String) throws -> NPRPCBidiStream<ChatMessage, ChatMessage>   {
+    let streamId = nprpc_generate_stream_id()
+
+    // Prepare StreamInit buffer
     let buffer = FlatBuffer()
-    buffer.prepare(208)
-    buffer.commit(80)
+    buffer.prepare(184)
+    buffer.commit(56)
     guard let data = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
 
-    // Write message header
+    // Write StreamInit message header
     data.storeBytes(of: UInt32(0), toByteOffset: 0, as: UInt32.self)  // size (set later)
-    data.storeBytes(of: UInt32(0), toByteOffset: 4, as: UInt32.self)  // msg_id: FunctionCall (MessageId enum value 0)
-    data.storeBytes(of: UInt32(0), toByteOffset: 8, as: UInt32.self)  // msg_type: Request
-    data.storeBytes(of: UInt32(0), toByteOffset: 12, as: UInt32.self) // reserved
+    data.storeBytes(of: impl.MessageId.streamInitialization.rawValue, toByteOffset: 4, as: UInt32.self)
+    data.storeBytes(of: impl.MessageType.request.rawValue, toByteOffset: 8, as: UInt32.self)
+    data.storeBytes(of: UInt32(0), toByteOffset: 12, as: UInt32.self)  // reserved
 
-    // Write call header
-    data.storeBytes(of: poaIdx, toByteOffset: 16, as: UInt16.self)
-    data.storeBytes(of: UInt8(0), toByteOffset: 18, as: UInt8.self)  // interface_idx
-    data.storeBytes(of: UInt8(0), toByteOffset: 19, as: UInt8.self)  // function_idx
-    data.storeBytes(of: objectId, toByteOffset: 24, as: UInt64.self)
+    // Write StreamInit fields
+    data.storeBytes(of: streamId, toByteOffset: 16, as: UInt64.self)  // offset 0
+    data.storeBytes(of: poaIdx, toByteOffset: 24, as: UInt16.self)  // offset 8
+    data.storeBytes(of: UInt8(0), toByteOffset: 26, as: UInt8.self)  // interface_idx at offset 10
+    data.storeBytes(of: objectId, toByteOffset: 32, as: UInt64.self)  // offset 16 (after 5-byte pad)
+    data.storeBytes(of: UInt8(0), toByteOffset: 40, as: UInt8.self)  // func_idx at offset 24
+    data.storeBytes(of: impl.StreamKind.bidi.rawValue, toByteOffset: 41, as: UInt8.self)
 
     // Marshal input arguments
-    var inArgs = nscalc_M15()
-    inArgs._1 = obj
-    marshal_nscalc_M15(buffer: buffer, offset: 32, data: inArgs)
+    var inArgs = nscalc_M3()
+    inArgs._1 = session_id
+    marshal_nscalc_M3(buffer: buffer, offset: 48, data: inArgs)
 
     guard let finalData = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
     finalData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
 
-    // Send and receive
-    try sendReceive(buffer: buffer, timeout: timeout)
+    guard let session = nprpc_object_get_session(self.handle),
+          let streamManager = nprpc_session_get_stream_manager(session) else {
+      throw RuntimeError(message: "Failed to get session for stream")
+    }
 
-    // Handle reply
-    let stdReply = try handleStandardReply(buffer: buffer)
-    if stdReply != 0 { throw UnexpectedReplyError(message: "Unexpected reply") }
-  }
-
-  public func send(msg: ChatMessage) throws -> Bool   {
-    // Prepare buffer
-    let buffer = FlatBuffer()
-    buffer.prepare(176)
-    buffer.commit(48)
-    guard let data = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
-
-    // Write message header
-    data.storeBytes(of: UInt32(0), toByteOffset: 0, as: UInt32.self)  // size (set later)
-    data.storeBytes(of: UInt32(0), toByteOffset: 4, as: UInt32.self)  // msg_id: FunctionCall (MessageId enum value 0)
-    data.storeBytes(of: UInt32(0), toByteOffset: 8, as: UInt32.self)  // msg_type: Request
-    data.storeBytes(of: UInt32(0), toByteOffset: 12, as: UInt32.self) // reserved
-
-    // Write call header
-    data.storeBytes(of: poaIdx, toByteOffset: 16, as: UInt16.self)
-    data.storeBytes(of: UInt8(0), toByteOffset: 18, as: UInt8.self)  // interface_idx
-    data.storeBytes(of: UInt8(1), toByteOffset: 19, as: UInt8.self)  // function_idx
-    data.storeBytes(of: objectId, toByteOffset: 24, as: UInt64.self)
-
-    // Marshal input arguments
-    var inArgs = nscalc_M16()
-    inArgs._1 = msg
-    marshal_nscalc_M16(buffer: buffer, offset: 32, data: inArgs)
-
-    guard let finalData = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
-    finalData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
-
-    // Send and receive
-    try sendReceive(buffer: buffer, timeout: timeout)
-
-    // Handle reply
-    let stdReply = try handleStandardReply(buffer: buffer)
-    if stdReply != -1 { throw UnexpectedReplyError(message: "Unexpected reply") }
-
-    guard let responseData = buffer.data else { throw BufferError(message: "Failed to get response data") }
-    let out = unmarshal_nscalc_M4(buffer: responseData, offset: 16)
-    return out._1
+    let stream = NPRPC.createStreamManagerBidiStream(streamManager: streamManager, streamId: streamId, buffer: buffer, initialPayloadCapacity: 144, unreliable: false, serializer: { (buffer: FlatBuffer, offset: Int, value: ChatMessage) in NPRPC.marshal_stream_struct(buffer: buffer, offset: offset, rootSize: 16, value: value) { buf, off, elem in marshal_ChatMessage(buffer: buf, offset: off, data: elem) } }, deserializer: { (data: UnsafeRawPointer, _: Int) in unmarshal_ChatMessage(buffer: data, offset: 0) })
+    let result = nprpc_session_stream_send_init(session, buffer.handle, self.timeout)
+    if result != 0 { throw RuntimeError(message: "StreamInit failed (code: \(result))") }
+    return stream
   }
 
 }
@@ -2701,168 +2850,64 @@ open class ChatServant: NPRPCServant, ChatProtocol, @unchecked Sendable {
     return "nscalc/nscalc.Chat"
   }
 
-  open func connect(obj: NPRPCObject)   {
+  open func connect(session_id: String, stream: NPRPCBidiStream<ChatMessage, ChatMessage>) async   {
     fatalError("Subclass must implement connect")
   }
 
-  open func send(msg: ChatMessage) -> Bool   {
-    fatalError("Subclass must implement send")
-  }
-
   // Dispatch incoming RPC calls
   public override func dispatch(buffer: FlatBuffer, remoteEndpoint: NPRPCEndpoint)   {
     guard let data = buffer.data else { return }
 
-    // Read function index from CallHeader
-    let functionIdx = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.CallHeader>.offset(of: \NPRPC.impl.CallHeader.function_idx)!), as: UInt8.self)
+    // Check message type to route streaming vs regular calls
+    let msgId = data.load(fromByteOffset: MemoryLayout<NPRPC.impl.Header>.offset(of: \NPRPC.impl.Header.msg_id)!, as: UInt32.self)
 
-    switch functionIdx     {
-      case 0: // Connect
-        // Validate input buffer for untrusted interface
-        guard check_1O(buffer: data, bufferSize: buffer.size, offset: 32) else         {
-          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
-          return
-        }
+    if msgId == impl.MessageId.streamInitialization.rawValue     {
+      let streamFuncIdx = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.StreamInit>.offset(of: \NPRPC.impl.StreamInit.func_idx)!), as: UInt8.self)
+      switch streamFuncIdx       {
+        case 0: // Connect
+          // Streaming method dispatch
+          guard let data = buffer.data else { return }
+          let streamId = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.StreamInit>.offset(of: \NPRPC.impl.StreamInit.stream_id)!), as: UInt64.self)
 
-        // Unmarshal input arguments
-        let ia: nscalc_M15
-        do {
-          ia = try unmarshal_nscalc_M15(buffer: data, offset: 32, endpoint: remoteEndpoint)
-        } catch {
-          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
-          return
-        }
-        
-        connect(obj: ia._1)
-        // Send success
-        makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.success)
-      case 1: // Send
-        // Validate input buffer for untrusted interface
-        guard check_1ChatMessage_1(buffer: data, bufferSize: buffer.size, offset: 32) else         {
-          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
-          return
-        }
+          // Validate input buffer for untrusted interface
+          guard check_1S(buffer: data, bufferSize: buffer.size, offset: 48) else           {
+            makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
+            return
+          }
 
-        // Unmarshal input arguments
-        let ia = unmarshal_nscalc_M16(buffer: data, offset: 32)
-        
-        let __ret_val = send(msg: ia._1)
-        // Prepare output buffer
-        let obuf = buffer
-        obuf.consume(obuf.size)
-        obuf.prepare(17)
-        obuf.commit(17)
-        // Marshal output arguments
-        var out_data = nscalc_M4()
-        out_data._1 = __ret_val
+          // Unmarshal input arguments
+          let ia = unmarshal_nscalc_M3(buffer: data, offset: 48)
 
-        marshal_nscalc_M4(buffer: buffer, offset: 16, data: out_data)
-        guard let outData = buffer.data else { return }
-        outData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
-        outData.storeBytes(of: impl.MessageId.blockResponse.rawValue, toByteOffset: 4, as: UInt32.self)
-        outData.storeBytes(of: impl.MessageType.answer.rawValue, toByteOffset: 8, as: UInt32.self)
-      default:
-        makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_UnknownFunctionIdx)
-    } // switch
-  } // dispatch
-}
+          // Get stream_manager for streaming (heap-allocated, survives after dispatch returns)
+          guard let sessionCtx = self.sessionContext,
+                let streamManager = nprpc_get_stream_manager(sessionCtx) else {
+            makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
+            return
+          }
+          let stream = NPRPC.createStreamManagerBidiStream(streamManager: streamManager, streamId: streamId, buffer: buffer, initialPayloadCapacity: 144, unreliable: false, serializer: { (buffer: FlatBuffer, offset: Int, value: ChatMessage) in NPRPC.marshal_stream_struct(buffer: buffer, offset: offset, rootSize: 16, value: value) { buf, off, elem in marshal_ChatMessage(buffer: buf, offset: off, data: elem) } }, deserializer: { (data: UnsafeRawPointer, _: Int) in unmarshal_ChatMessage(buffer: data, offset: 0) })
+          nprpc_stream_manager_defer_stream_start(streamManager, streamId)
+          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.success)
+          Task {
+            await connect(session_id: ia._1, stream: stream)
+          }
 
-public protocol ChatParticipantProtocol {
-  func onMessage(msg: ChatMessage)
-}
-
-// Client proxy for ChatParticipant
-// Pure Swift implementation with direct marshalling
-final public class ChatParticipant: NPRPCObject, @unchecked Sendable {
-  public override class var classId: String {
-    "nscalc/nscalc.ChatParticipant"
-  }
-
-  public required init(handle: UnsafeMutableRawPointer)   {
-    super.init(handle: handle)
-  }
-
-  public required init(from decoder: Decoder) throws   {
-    try super.init(from: decoder)
-  }
-
-  public func onMessage(msg: ChatMessage) async   {
-    // Prepare buffer
-    let buffer = FlatBuffer()
-    buffer.prepare(176)
-    buffer.commit(48)
-    guard let data = buffer.data else { return  }
-
-    // Write message header
-    data.storeBytes(of: UInt32(0), toByteOffset: 0, as: UInt32.self)  // size (set later)
-    data.storeBytes(of: UInt32(0), toByteOffset: 4, as: UInt32.self)  // msg_id: FunctionCall (MessageId enum value 0)
-    data.storeBytes(of: UInt32(0), toByteOffset: 8, as: UInt32.self)  // msg_type: Request
-    data.storeBytes(of: UInt32(0), toByteOffset: 12, as: UInt32.self) // reserved
-
-    // Write call header
-    data.storeBytes(of: poaIdx, toByteOffset: 16, as: UInt16.self)
-    data.storeBytes(of: UInt8(0), toByteOffset: 18, as: UInt8.self)  // interface_idx
-    data.storeBytes(of: UInt8(0), toByteOffset: 19, as: UInt8.self)  // function_idx
-    data.storeBytes(of: objectId, toByteOffset: 24, as: UInt64.self)
-
-    // Marshal input arguments
-    var inArgs = nscalc_M16()
-    inArgs._1 = msg
-    marshal_nscalc_M16(buffer: buffer, offset: 32, data: inArgs)
-
-    guard let finalData = buffer.data else { return  }
-    finalData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
-
-    // Send async (no reply expected)
-    do {
-      try await sendAsync(buffer: buffer, timeout: timeout)
-    } catch {
-      // Fire-and-forget: ignore communication errors
+        default:
+          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_UnknownFunctionIdx)
+      } // switch streamFuncIdx
+      return
     }
-  }
-
-}
-
-// Servant base for ChatParticipant
-open class ChatParticipantServant: NPRPCServant, ChatParticipantProtocol, @unchecked Sendable {
-  public override init() { super.init() }
-
-  public override func getClass() -> String   {
-    return "nscalc/nscalc.ChatParticipant"
-  }
-
-  open func onMessage(msg: ChatMessage)   {
-    fatalError("Subclass must implement onMessage")
-  }
-
-  // Dispatch incoming RPC calls
-  public override func dispatch(buffer: FlatBuffer, remoteEndpoint: NPRPCEndpoint)   {
-    guard let data = buffer.data else { return }
 
     // Read function index from CallHeader
     let functionIdx = data.load(fromByteOffset: (16 + MemoryLayout<NPRPC.impl.CallHeader>.offset(of: \NPRPC.impl.CallHeader.function_idx)!), as: UInt8.self)
 
     switch functionIdx     {
-      case 0: // OnMessage
-        // Validate input buffer for untrusted interface
-        guard check_1ChatMessage_1(buffer: data, bufferSize: buffer.size, offset: 32) else         {
-          makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
-          return
-        }
-
-        // Unmarshal input arguments
-        let ia = unmarshal_nscalc_M16(buffer: data, offset: 32)
-        
-        onMessage(msg: ia._1)
-        // Send success
-        makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.success)
       default:
         makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_UnknownFunctionIdx)
     } // switch
   } // dispatch
 }
 
-fileprivate struct nscalc_M17: Codable, Sendable {
+fileprivate struct nscalc_M15: Codable, Sendable {
   public var _1: [Solution] = []
   public var _2: [Fertilizer] = []
 
@@ -2875,8 +2920,8 @@ fileprivate struct nscalc_M17: Codable, Sendable {
 }
 
 
-// MARK: - Marshal nscalc_M17
-fileprivate func marshal_nscalc_M17(buffer: FlatBuffer, offset: Int, data: nscalc_M17) {
+// MARK: - Marshal nscalc_M15
+fileprivate func marshal_nscalc_M15(buffer: FlatBuffer, offset: Int, data: nscalc_M15) {
   NPRPC.marshal_struct_vector(buffer: buffer, offset: offset + 0, vector: data._1, elementSize: 136, elementAlignment: 8) { buf, off, elem in
     marshal_Solution(buffer: buf, offset: off, data: elem)
   }
@@ -2885,15 +2930,38 @@ fileprivate func marshal_nscalc_M17(buffer: FlatBuffer, offset: Int, data: nscal
   }
 }
 
-// MARK: - Unmarshal nscalc_M17
-fileprivate func unmarshal_nscalc_M17(buffer: UnsafeRawPointer, offset: Int) -> nscalc_M17 {
-  var result = nscalc_M17()
+// MARK: - Unmarshal nscalc_M15
+fileprivate func unmarshal_nscalc_M15(buffer: UnsafeRawPointer, offset: Int) -> nscalc_M15 {
+  var result = nscalc_M15()
   result._1 = NPRPC.unmarshal_struct_vector(buffer: buffer, offset: offset + 0, elementSize: 136) { buf, off in
     unmarshal_Solution(buffer: buf, offset: off)
   }
   result._2 = NPRPC.unmarshal_struct_vector(buffer: buffer, offset: offset + 8, elementSize: 32) { buf, off in
     unmarshal_Fertilizer(buffer: buf, offset: off)
   }
+  return result
+}
+
+fileprivate struct nscalc_M16: Codable, Sendable {
+  public var _1: NPRPCObject = NPRPCObject()
+
+  public init() {}
+
+  public init(_1: NPRPCObject)   {
+    self._1 = _1
+  }
+}
+
+
+// MARK: - Marshal nscalc_M16
+fileprivate func marshal_nscalc_M16(buffer: FlatBuffer, offset: Int, data: nscalc_M16) {
+  detail.marshal_ObjectId(buffer: buffer, offset: offset + 0, data: data._1.data)
+}
+
+// MARK: - Unmarshal nscalc_M16
+fileprivate func unmarshal_nscalc_M16(buffer: UnsafeRawPointer, offset: Int, endpoint: NPRPCEndpoint) throws -> nscalc_M16 {
+  var result = nscalc_M16()
+  result._1 = try NPRPC.unmarshal_object_proxy(buffer: buffer, offset: offset + 0, endpoint: endpoint)
   return result
 }
 
@@ -2949,7 +3017,7 @@ final public class Calculator: NPRPCObject, @unchecked Sendable {
     if stdReply != -1 { throw UnexpectedReplyError(message: "Unexpected reply") }
 
     guard let responseData = buffer.data else { throw BufferError(message: "Failed to get response data") }
-    let out = unmarshal_nscalc_M17(buffer: responseData, offset: 16)
+    let out = unmarshal_nscalc_M15(buffer: responseData, offset: 16)
     return (out._1, out._2)
   }
 
@@ -2973,9 +3041,9 @@ final public class Calculator: NPRPCObject, @unchecked Sendable {
     data.storeBytes(of: objectId, toByteOffset: 24, as: UInt64.self)
 
     // Marshal input arguments
-    var inArgs = nscalc_M15()
+    var inArgs = nscalc_M16()
     inArgs._1 = obj
-    marshal_nscalc_M15(buffer: buffer, offset: 32, data: inArgs)
+    marshal_nscalc_M16(buffer: buffer, offset: 32, data: inArgs)
 
     guard let finalData = buffer.data else { throw BufferError(message: "Failed to get buffer data") }
     finalData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
@@ -3100,11 +3168,11 @@ open class CalculatorServant: NPRPCServant, CalculatorProtocol, @unchecked Senda
         
         let (_out_solutions, _out_fertilizers) = getData()
         // Marshal output arguments
-        var out_data = nscalc_M17()
+        var out_data = nscalc_M15()
         out_data._1 = _out_solutions
         out_data._2 = _out_fertilizers
 
-        marshal_nscalc_M17(buffer: buffer, offset: 16, data: out_data)
+        marshal_nscalc_M15(buffer: buffer, offset: 16, data: out_data)
         guard let outData = buffer.data else { return }
         outData.storeBytes(of: UInt32(buffer.size - 4), toByteOffset: 0, as: UInt32.self)
         outData.storeBytes(of: impl.MessageId.blockResponse.rawValue, toByteOffset: 4, as: UInt32.self)
@@ -3117,9 +3185,9 @@ open class CalculatorServant: NPRPCServant, CalculatorProtocol, @unchecked Senda
         }
 
         // Unmarshal input arguments
-        let ia: nscalc_M15
+        let ia: nscalc_M16
         do {
-          ia = try unmarshal_nscalc_M15(buffer: data, offset: 32, endpoint: remoteEndpoint)
+          ia = try unmarshal_nscalc_M16(buffer: data, offset: 32, endpoint: remoteEndpoint)
         } catch {
           makeSimpleAnswer(buffer: buffer, messageId: impl.MessageId.error_BadInput)
           return
@@ -3256,29 +3324,11 @@ fileprivate func check_1Footstep_1(buffer: UnsafeRawPointer, bufferSize: Int, of
 }
 
 
-// Safety check for nscalc_M15
+// Safety check for nscalc_M16
 fileprivate func check_1O(buffer: UnsafeRawPointer, bufferSize: Int, offset: Int) -> Bool {
   guard NPRPC.check_struct_bounds(bufferSize: bufferSize, offset: offset, structSize: 48) else { return false }
   guard NPRPC.check_string_bounds(buffer: buffer, bufferSize: bufferSize, offset: offset + 0 + 28) else { return false }
   guard NPRPC.check_string_bounds(buffer: buffer, bufferSize: bufferSize, offset: offset + 0 + 36) else { return false }
-  return true
-}
-
-
-// Safety check for nscalc_M16
-fileprivate func check_1ChatMessage_1(buffer: UnsafeRawPointer, bufferSize: Int, offset: Int) -> Bool {
-  guard NPRPC.check_struct_bounds(bufferSize: bufferSize, offset: offset, structSize: 16) else { return false }
-  guard NPRPC.check_string_bounds(buffer: buffer, bufferSize: bufferSize, offset: offset + 0 + 4) else { return false }
-  guard NPRPC.check_optional_bounds(buffer: buffer, bufferSize: bufferSize, offset: offset + 0 + 12, valueSize: 20) else { return false }
-  do {
-    let relOffset = Int(buffer.load(fromByteOffset: offset + 0 + 12, as: UInt32.self))
-    if relOffset != 0 {
-      let valueOffset = offset + 0 + 12 + relOffset
-      guard NPRPC.check_struct_bounds(bufferSize: bufferSize, offset: valueOffset, structSize: 20) else { return false }
-      guard NPRPC.check_string_bounds(buffer: buffer, bufferSize: bufferSize, offset: valueOffset + 4) else { return false }
-      guard NPRPC.check_vector_bounds(buffer: buffer, bufferSize: bufferSize, offset: valueOffset + 12, elementSize: 1) else { return false }
-    }
-  }
   return true
 }
 

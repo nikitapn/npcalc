@@ -147,6 +147,16 @@ message Footstep {
   dir: Vector2;
 }
 
+message RealtimeClientEvent {
+  footstep?: Footstep;
+}
+
+message RealtimeServerEvent {
+  data_changed_idx?: u32;
+  alarm?: Alarm;
+  footstep?: Footstep;
+}
+
 [trusted=false]
 interface Authorizator {
   UserData LogIn(login: in string, password: in string) raises(AuthorizationFailed);
@@ -185,14 +195,16 @@ interface DataObserver {
   // async OnChange_Fertilizer(fertilizer: in Fertilizer);
 }
 
+// Stream-based replacement for Subscribe()/SendFootstep().
+// Keep the legacy callback-object API during migration.
 [trusted=false]
-interface Chat {
-  void Connect(obj: in object);
-  boolean Send(msg: in ChatMessage);
+interface Realtime {
+  bidi_stream<RealtimeClientEvent, RealtimeServerEvent> Connect(session_id: in string);
 }
 
-interface ChatParticipant {
-  async OnMessage(msg: in ChatMessage);
+[trusted=false]
+interface Chat {
+  bidi_stream<ChatMessage, ChatMessage> Connect(session_id: in string);
 }
 
 [trusted=false]

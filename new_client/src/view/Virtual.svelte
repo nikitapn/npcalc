@@ -1,121 +1,88 @@
-<script lang="ts">
-  import { onMount, afterUpdate } from "svelte";
-  import { writable, derived } from "svelte/store";
+<script lang="ts" generics="T">
+  import { onMount } from "svelte";
+  import type { Snippet } from "svelte";
 
-  export let card: (data: any) => any;
-  export let items: any[] = [];
+  type Props = {
+    items?: T[];
+    itemHeight?: number;
+    gap?: number;
+    minColumnWidth?: number;
+    overscan?: number;
+    viewportClass?: string;
+    getKey?: (item: T, index: number) => string | number;
+    children: Snippet<[T, number]>;
+  };
 
-  const start = writable(0);
-  const end = writable(0);
-  const heightMap = writable<number[]>([]);
-  const viewportHeight = writable(0);
-  const top = writable(0);
-  const bottom = writable(0);
-  const averageHeight = writable(50); // Default average height
+  let {
+    items = [],
+    itemHeight = 320,
+    gap = 16,
+    minColumnWidth = 320,
+    overscan = 2,
+    viewportClass = "",
+    getKey,
+    children,
+  }: Props = $props();
 
-  let viewport: HTMLElement | null = null;
-  let contents: HTMLElement | null = null;
+  let viewport: HTMLDivElement | null = null;
+  let viewportHeight = $state(0);
+  let viewportWidth = $state(0);
+  let scrollTop = $state(0);
 
-  const visible = derived([start, end], ([$start, $end]) => {
-    return items.slice($start, $end).map((data, i) => ({ index: i + $start, data }));
-  });
+  const columns = $derived(Math.max(1, Math.floor((viewportWidth + gap) / (minColumnWidth + gap))));
+  const totalRows = $derived(Math.ceil(items.length / columns));
+  const rowStride = $derived(itemHeight + gap);
+  const totalHeight = $derived(totalRows > 0 ? totalRows * itemHeight + Math.max(0, totalRows - 1) * gap : 0);
+  const startRow = $derived(Math.max(0, Math.floor(scrollTop / rowStride) - overscan));
+  const visibleRows = $derived(Math.max(1, Math.ceil(viewportHeight / rowStride) + overscan * 2));
+  const endRow = $derived(Math.min(totalRows, startRow + visibleRows));
+  const startIndex = $derived(startRow * columns);
+  const endIndex = $derived(Math.min(items.length, endRow * columns));
+  const offsetY = $derived(startRow * rowStride);
+  const visibleItems = $derived(items.slice(startIndex, endIndex));
 
-  function refresh() {
-    if (!viewport || !contents) return;
-
-    const rows = Array.from(contents.children) as HTMLElement[];
-    const scrollTop = viewport.scrollTop;
-
-    let contentHeight = 0;
-    let i = 0;
-    let lastItemTop = 0;
-
-    while (contentHeight < viewport.offsetHeight && i < items.length) {
-      const row = rows[i];
-      if (!row) break;
-
-      const rowHeight = row.offsetHeight;
-      heightMap.update((map) => {
-        map[i] = rowHeight;
-        return map;
-      });
-
-      if (lastItemTop !== row.offsetTop) {
-        lastItemTop = row.offsetTop;
-        contentHeight += rowHeight;
-      }
-
-      i++;
-    }
-
-    end.set(i);
-
-    const remaining = items.length - i;
-    averageHeight.set(contentHeight / i || 50);
-    bottom.set(remaining * (contentHeight / i || 50));
-  }
-
-  function handleScroll() {
+  function syncMetrics() {
     if (!viewport) return;
-
-    const scrollTop = viewport.scrollTop;
-    let y = 0;
-    let i = 0;
-
-    heightMap.update((map) => {
-      while (i < items.length) {
-        const rowHeight = map[i] || 50;
-        if (y + rowHeight > scrollTop) {
-          start.set(i);
-          top.set(y);
-          break;
-        }
-        y += rowHeight;
-        i++;
-      }
-      return map;
-    });
-
-    refresh();
+    viewportHeight = viewport.clientHeight;
+    viewportWidth = viewport.clientWidth;
+    scrollTop = viewport.scrollTop;
   }
 
   onMount(() => {
-    refresh();
-  });
+    syncMetrics();
 
-  afterUpdate(() => {
-    refresh();
+    if (!viewport) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => syncMetrics());
+    observer.observe(viewport);
+    window.addEventListener("resize", syncMetrics);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncMetrics);
+    };
   });
 </script>
 
-<virtual-list-viewport
-  bind:this={viewport}
-  bind:offsetHeight={$viewportHeight}
-  on:scroll={handleScroll}
->
-  <virtual-list-contents
-    bind:this={contents}
-    style="padding-top: {$top}px; padding-bottom: {$bottom}px;"
-  >
-    {#each $visible as row (row.index)}
-      <virtual-list-row>
-        {@html card(row.data)}
-      </virtual-list-row>
-    {/each}
-  </virtual-list-contents>
-</virtual-list-viewport>
-
-<style lang="scss">
-  virtual-list-viewport {
-    overflow-y: auto;
-    display: block;
-    height: 700px;
-  }
-
-  virtual-list-contents {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-    grid-auto-rows: 1fr;
-  }
-</style>
+<div bind:this={viewport} class={`overflow-auto overscroll-contain ${viewportClass}`} onscroll={syncMetrics}>
+  {#if items.length === 0}
+    <div class="grid min-h-[18rem] place-items-center rounded-[1.75rem] border border-dashed border-white/15 bg-black/10 p-8 text-center text-sm text-ocean-100/65">
+      No items match the current filters.
+    </div>
+  {:else}
+    <div class="relative" style={`height: ${totalHeight}px;`}>
+      <div
+        class="absolute inset-x-0 top-0 grid"
+        style={`transform: translateY(${offsetY}px); grid-template-columns: repeat(${columns}, minmax(0, 1fr)); gap: ${gap}px;`}
+      >
+        {#each visibleItems as item, localIndex (getKey ? getKey(item, startIndex + localIndex) : startIndex + localIndex)}
+          <div style={`min-height: ${itemHeight}px;`}>
+            {@render children(item, startIndex + localIndex)}
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+</div>

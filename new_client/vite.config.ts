@@ -1,13 +1,17 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import path from 'path'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const srcDir = fileURLToPath(new URL('./src', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [tailwindcss(), svelte()],
   resolve: {
     alias: {
-      '@/': path.resolve(__dirname, './src') + '/',
+      '@/': path.resolve(srcDir) + '/',
     },
   }
 })
