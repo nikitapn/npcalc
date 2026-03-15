@@ -1,6 +1,7 @@
-FROM nprpc-dev:latest AS nscalc-builder
-
-USER root
+# ============================================================================
+# Stage 1: Build sqlite3 with snapshot support
+# ============================================================================
+FROM swift:6.2.3 AS sqlite3-builder
 
 # Build SQLite from the amalgamation with SQLITE_ENABLE_SNAPSHOT enabled.
 # The Ubuntu package omits this flag, which causes GRDB's WALSnapshot to fail
@@ -28,6 +29,18 @@ RUN set -e \
  && cp sqlite3.h /usr/include/ \
  && ldconfig \
  && cd / && rm -rf /tmp/sqlite-amalgamation-3470000*
+
+# ============================================================================
+# Stage 2: Build nscalc with sqlite3 snapshot support
+# ============================================================================
+FROM nprpc-dev:latest AS nscalc-builder
+
+USER root
+
+# Install GRDB's SQLite dependency with snapshot support, since the default Ubuntu package doesn't have it.
+COPY --from=sqlite3-builder /usr/lib/x86_64-linux-gnu/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=sqlite3-builder /usr/bin/sqlite3 /usr/bin/sqlite3
+COPY --from=sqlite3-builder /usr/include/sqlite3.h /usr/include/sqlite3.h
 
 USER ubuntu
 WORKDIR /project

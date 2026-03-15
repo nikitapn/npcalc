@@ -1,6 +1,7 @@
 // Copyright (c) 2025 nikitapnn1@gmail.com
 
 import GRDB
+import NScalc
 
 // MARK: - Column-name order mirrors ELEMENT enum in nscalc.npidl
 // Index: 0=NO3  1=NH4  2=P  3=K  4=Ca  5=Mg  6=S   7=Cl

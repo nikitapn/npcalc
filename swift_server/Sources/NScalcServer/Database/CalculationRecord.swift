@@ -1,6 +1,7 @@
 // Copyright (c) 2025 nikitapnn1@gmail.com
 
 import GRDB
+import NScalc
 
 // MARK: - CalculationRecord
 

@@ -14,7 +14,7 @@
         "--public-key=certs/archvm.lan.crt",
         "--private-key=certs/archvm.lan.key",
         "--dh-params=certs/dhparam.pem"
-        ],
+      ],
       "cwd": "${workspaceFolder}",
       "stopAtEntry": false,
       "setupCommands": [
@@ -23,6 +23,46 @@
           "text": "-gdb-set disassembly-flavor intel"
         }
       ]
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:nscalc}/external/nprpc/nprpc_swift",
+      "name": "Debug http3-server (external/nprpc/nprpc_swift)",
+      "target": "http3-server",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug http3-server (external/nprpc/nprpc_swift)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:nscalc}/external/nprpc/nprpc_swift",
+      "name": "Release http3-server (external/nprpc/nprpc_swift)",
+      "target": "http3-server",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release http3-server (external/nprpc/nprpc_swift)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:nscalc}/swift_server",
+      "name": "Debug NScalcServer (swift_server)",
+      "target": "NScalcServer",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug NScalcServer (swift_server)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:nscalc}/swift_server",
+      "name": "Release NScalcServer (swift_server)",
+      "target": "NScalcServer",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release NScalcServer (swift_server)"
     }
   ],
   "inputs": [

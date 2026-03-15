@@ -33,9 +33,9 @@ async function fetch_data() {
 		store.solutions.push_some(solutions.map( s => che.Solution.create_from_data(s) ));
 		store.fertilizers.push_some(fertilizers.map( f => che.Fertilizer.create_from_data(f) ));
 		await get_calculations();
-		await calculator.Subscribe(
-			poa.activate_object(new DataObserverImpl())
-		);
+		// await calculator.Subscribe(
+		// 	poa.activate_object(new DataObserverImpl())
+		// );
 		connect_to_room();
 	} catch (e) {
 		console.log(e);

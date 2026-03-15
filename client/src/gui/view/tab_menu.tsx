@@ -274,7 +274,7 @@ abstract class RouterTabPane extends TabPane {
 	protected abstract create();
 
 	private set_url(idx: number) {
-		window.history.pushState("", "", this.urls[idx]);
+		// window.history.pushState("", "", this.urls[idx]);
 	}
 
 	public select_view(view_index: number): boolean {

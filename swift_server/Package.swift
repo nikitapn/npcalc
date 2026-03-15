@@ -24,15 +24,27 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto", from: "3.0.0"),
     ],
     targets: [
+        // Generated RPC stubs — compiled as a separate module so that
+        // server code imports them explicitly: `import NScalc`
+        .target(
+            name: "NScalc",
+            dependencies: [
+                .product(name: "NPRPC", package: "nprpc_swift"),
+            ],
+            path: "Sources/NScalc",
+            swiftSettings: [
+                .interoperabilityMode(.Cxx),
+            ]
+        ),
         .executableTarget(
             name: "NScalcServer",
             dependencies: [
+                "NScalc",
                 .product(name: "NPRPC",  package: "nprpc_swift"),
                 .product(name: "GRDB",   package: "GRDB.swift"),
                 .product(name: "Crypto", package: "swift-crypto"),
             ],
             path: "Sources/NScalcServer",
-            // Generated/ subdirectory is automatically included
             swiftSettings: [
                 .interoperabilityMode(.Cxx),
             ]

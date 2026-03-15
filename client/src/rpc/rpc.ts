@@ -10,7 +10,7 @@ export let authorizator: nscalc.Authorizator;
 export let chat: nscalc.Chat;
 
 export const init_rpc = async (): Promise<void> => {
-	NPRPC.set_debug_level(NPRPC.DebugLevel.DebugLevel_Critical);
+	NPRPC.setLogLevel(NPRPC.LogLevel.trace);
 	let rpc = await NPRPC.init();
 	poa = rpc.create_poa(10);
 	calculator = NPRPC.narrow(rpc.host_info.objects.calculator, nscalc.Calculator);

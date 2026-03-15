@@ -32,7 +32,7 @@ SWIFT_IDL_FILES = [
 
 # Output directories (relative to ROOT_DIR, mirrored as /app/... inside container)
 TS_OUTPUT_DIR    = "client/src/rpc"
-SWIFT_OUTPUT_DIR = "swift_server/Sources/NScalcServer/Generated"
+SWIFT_OUTPUT_DIR = "swift_server/Sources/NScalc"
 
 
 def run_npidl(lang_flag: str, idl_files: list, output_dir: str) -> None:

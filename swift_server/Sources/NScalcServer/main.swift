@@ -3,6 +3,7 @@
 //
 // Run gen_stubs.py first to populate Sources/NScalcServer/Generated/ before building.
 
+import NScalc
 import NPRPC
 import Foundation
 import GRDB
@@ -11,7 +12,7 @@ import GRDB
 // MARK: - Calculator servant
 // ---------------------------------------------------------------------------
 
-class CalculatorServantImpl: CalculatorServant {
+class CalculatorServantImpl: CalculatorServant, @unchecked Sendable {
     private let solutions:    SolutionService
     private let fertilizers:  FertilizerService
     private let calculations: CalculationService
@@ -63,7 +64,7 @@ do {
     print("Database opened: \(dbPath)")
 
     let rpc = try RpcBuilder()
-        .setLogLevel(.info)
+        .setLogLevel(.trace)
         .withHostname("localhost")
         .withHttp(httpPort)
             .ssl(certFile: certFile, keyFile: keyFile)
@@ -73,9 +74,14 @@ do {
 
     print("NScalc Swift server listening on port \(httpPort)")
 
-    let poa  = try rpc.createPoa(maxObjects: 10)
+    let poa  = try rpc.createPoa(maxObjects: 10, lifetime: .persistent, idPolicy: .userSupplied)
     let calc = CalculatorServantImpl(db: appDB)
-    let _    = try poa.activateObject(calc)
+    let _    = try poa.activateObjectWithId(objectId: UInt64(0), servant: calc, flags: .allowAll)
+
+    let chat = ChatServantImpl()
+    let oid    = try poa.activateObjectWithId(objectId: UInt64(1), servant: chat, flags: .allowAll)
+
+    print("Activated ChatServant with oid: \(oid)")
 
     // TODO: wire up Authorizator and RegisteredUser servants
 
