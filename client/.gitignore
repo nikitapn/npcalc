@@ -4,3 +4,4 @@ public/build
 public/host.json
 package-lock.json
 src/rpc/nscalc.ts
+src/rpc/grow_journal.ts

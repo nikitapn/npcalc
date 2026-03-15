@@ -145,6 +145,7 @@ The application uses NPRPC (Nikita's Protocol RPC) for communication between cli
 
 - `nscalc.npidl`: Main calculator interfaces
 - `proxy.npidl`: Proxy service interfaces
+- `grow_journal.npidl`: Draft grow-journal/story interfaces for uploads and processed media playback
 
 ## Development
 

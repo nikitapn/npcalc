@@ -22,12 +22,15 @@ DOCKER_IMAGE = "nprpc-dev:latest"
 TS_IDL_FILES = [
     "idl/nscalc.npidl",
     # "idl/proxy.npidl",
+    "idl/grow_journal.npidl",  # draft contract, not wired into clients yet
 ]
 
 # IDL files for Swift (server only implements the nscalc interface;
-#  proxy.npidl is for the Windows SOCKS5 relay client — add it if/when needed)
+#  proxy.npidl is for the Windows SOCKS5 relay client — add it if/when needed;
+#  grow_journal.npidl is still a draft contract)
 SWIFT_IDL_FILES = [
     "idl/nscalc.npidl",
+    "idl/grow_journal.npidl",  # draft contract, not wired into clients yet
 ]
 
 # Output directories (relative to ROOT_DIR, mirrored as /app/... inside container)

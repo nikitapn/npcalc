@@ -8,7 +8,7 @@ class RealtimeServantImpl: RealtimeServant, @unchecked Sendable {
     await stream.writer.write(
       RealtimeServerEvent(
         data_changed_idx: nil,
-        alarm: Alarm(id: 0, type: .info, msg: "Realtime connected"),
+        alarm: Alarm(id: 0, type: .Info, msg: "Realtime connected"),
         footstep: nil
       )
     )

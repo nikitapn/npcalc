@@ -75,7 +75,7 @@ do {
 
     print("NScalc Swift server listening on port \(httpPort)")
 
-    let poa  = try rpc.createPoa(maxObjects: 10, lifetime: .persistent, idPolicy: .userSupplied)
+    let poa  = try rpc.createPoa(maxObjects: 10, lifetime: .Persistent, idPolicy: .userSupplied)
     let calc = CalculatorServantImpl(db: appDB)
     let calcOid = try poa.activateObjectWithId(objectId: UInt64(0), servant: calc, flags: .allowAll)
 

@@ -1,0 +1,212 @@
+// Draft grow-journal contract for crop stories, uploads, and processed media.
+// This file is intentionally not wired into gen_stubs.py yet.
+module grow_journal;
+
+alias binary = u8[];
+
+enum StoryVisibility {
+  Private,
+  Unlisted,
+  Public,
+}
+
+enum StoryStage {
+  Planning,
+  Germination,
+  Vegetative,
+  Flowering,
+  Harvest,
+  Archived,
+}
+
+enum UpdateKind {
+  Note,
+  Measurement,
+  PhotoSet,
+  Video,
+}
+
+enum MediaKind {
+  Image,
+  Video,
+}
+
+enum MediaStatus {
+  PendingUpload,
+  Uploading,
+  Queued,
+  Processing,
+  Ready,
+  Failed,
+}
+
+message StoryPreview {
+  id: u64;
+  slug: string;
+  title: string;
+  crop_name: string;
+  cover_image_url?: string;
+  solution_id?: u32;
+  solution_name?: string;
+  author_name: string;
+  visibility: StoryVisibility;
+  stage: StoryStage;
+  created_at: string;
+  updated_at: string;
+}
+
+message StoryPage {
+  page: u32;
+  page_size: u32;
+  total_stories: u32;
+  stories: StoryPreview[];
+}
+
+message StoryDetail {
+  id: u64;
+  slug: string;
+  title: string;
+  crop_name: string;
+  description: string;
+  cover_image_url?: string;
+  solution_id?: u32;
+  solution_name?: string;
+  author_name: string;
+  visibility: StoryVisibility;
+  stage: StoryStage;
+  created_at: string;
+  updated_at: string;
+}
+
+message MeasurementSnapshot {
+  ec?: f64;
+  ph?: f64;
+  ppm?: f64;
+  solution_temperature_c?: f64;
+  air_temperature_c?: f64;
+  humidity_pct?: f64;
+  water_level_pct?: f64;
+  note?: string;
+}
+
+message MediaAsset {
+  id: u64;
+  kind: MediaKind;
+  status: MediaStatus;
+  original_filename: string;
+  mime_type: string;
+  byte_size: u64;
+  width?: u32;
+  height?: u32;
+  duration_ms?: u64;
+  image_url?: string;
+  poster_url?: string;
+  dash_manifest_url?: string;
+  created_at: string;
+  error_message?: string;
+}
+
+message StoryUpdate {
+  id: u64;
+  story_id: u64;
+  author_name: string;
+  title?: string;
+  body: string;
+  kind: UpdateKind;
+  measurements?: MeasurementSnapshot;
+  media: MediaAsset[];
+  created_at: string;
+}
+
+message UpdatePage {
+  page: u32;
+  page_size: u32;
+  total_updates: u32;
+  updates: StoryUpdate[];
+}
+
+message CreateStoryRequest {
+  title: string;
+  crop_name: string;
+  description: string;
+  visibility: StoryVisibility;
+  solution_id?: u32;
+}
+
+message CreateUpdateRequest {
+  story_id: u64;
+  title?: string;
+  body: string;
+  kind: UpdateKind;
+  measurements?: MeasurementSnapshot;
+}
+
+message UploadTarget {
+  asset_id: u64;
+  upload_token: string;
+  story_id: u64;
+  update_id?: u64;
+  kind: MediaKind;
+  original_filename: string;
+  mime_type: string;
+}
+
+message UploadProgress {
+  asset_id: u64;
+  bytes_received: u64;
+}
+
+message StoryStreamClientEvent {
+  typing_update_id?: u64;
+}
+
+message StoryStreamServerEvent {
+  story_id?: u64;
+  update?: StoryUpdate;
+  media?: MediaAsset;
+  progress?: UploadProgress;
+}
+
+exception NotFound {
+  msg: string;
+}
+
+exception UploadRejected {
+  msg: string;
+}
+
+exception ProcessingFailed {
+  msg: string;
+}
+
+[trusted=false]
+interface JournalService {
+  StoryPage ListStories(page: u32, page_size: u32);
+  StoryDetail GetStory(slug: string) raises(NotFound);
+  UpdatePage ListUpdates(story_id: u64, page: u32, page_size: u32) raises(NotFound);
+
+  StoryDetail CreateStory(req: in CreateStoryRequest);
+  StoryUpdate CreateUpdate(req: in CreateUpdateRequest) raises(NotFound);
+
+  UploadTarget CreateImageUpload(story_id: u64, update_id: u64, filename: string, mime_type: string) raises(NotFound, UploadRejected);
+  UploadTarget CreateVideoUpload(story_id: u64, update_id: u64, filename: string, mime_type: string) raises(NotFound, UploadRejected);
+  StoryUpdate AttachAsset(update_id: u64, asset_id: u64) raises(NotFound);
+}
+
+[trusted=false]
+interface UploadService {
+  void UploadAsset(asset_id: u64, upload_token: string, data: client_stream<binary>);
+  UploadProgress FinishUpload(asset_id: u64, upload_token: string) raises(NotFound, UploadRejected);
+  boolean AbortUpload(asset_id: u64, upload_token: string);
+}
+
+[trusted=false]
+interface StoryStreamService {
+  bidi_stream<StoryStreamClientEvent, StoryStreamServerEvent> WatchStory(story_id: u64);
+}
+
+[trusted=false]
+interface MediaService {
+  string GetVideoDashManifest(asset_id: u64) raises(NotFound, ProcessingFailed);
+  server_stream<binary> GetVideoDashSegmentRange(asset_id: u64, byte_offset: u64, byte_length: u64) raises(NotFound, ProcessingFailed);
+}
