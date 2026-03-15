@@ -88,16 +88,37 @@ do {
     let realtime = RealtimeServantImpl()
     let realtimeOid = try poa.activateObjectWithId(objectId: UInt64(5), servant: realtime, flags: .allowAll)
 
+    let journalStore = GrowJournalMockStore()
+    let journal = JournalServiceServantImpl(store: journalStore)
+    let journalOid = try poa.activateObjectWithId(objectId: UInt64(6), servant: journal, flags: .allowAll)
+
+    let uploads = UploadServiceServantImpl(store: journalStore)
+    let uploadsOid = try poa.activateObjectWithId(objectId: UInt64(7), servant: uploads, flags: .allowAll)
+
+    let storyStream = StoryStreamServiceServantImpl(store: journalStore)
+    let storyStreamOid = try poa.activateObjectWithId(objectId: UInt64(8), servant: storyStream, flags: .allowAll)
+
+    let media = MediaServiceServantImpl(store: journalStore)
+    let mediaOid = try poa.activateObjectWithId(objectId: UInt64(9), servant: media, flags: .allowAll)
+
         rpc.clearHostJson()
         try rpc.addToHostJson(name: "calculator", objectId: calcOid)
         try rpc.addToHostJson(name: "authorizator", objectId: authOid)
         try rpc.addToHostJson(name: "chat", objectId: chatOid)
         try rpc.addToHostJson(name: "realtime", objectId: realtimeOid)
+        try rpc.addToHostJson(name: "journal", objectId: journalOid)
+        try rpc.addToHostJson(name: "journal_uploads", objectId: uploadsOid)
+        try rpc.addToHostJson(name: "journal_stream", objectId: storyStreamOid)
+        try rpc.addToHostJson(name: "journal_media", objectId: mediaOid)
         let hostJsonPath = try rpc.produceHostJson(outputPath: hostJsonOutputPath)
 
     print("Activated Authorizator with oid: \(authOid)")
     print("Activated ChatServant with oid: \(chatOid)")
     print("Activated RealtimeServant with oid: \(realtimeOid)")
+    print("Activated JournalService with oid: \(journalOid)")
+    print("Activated UploadService with oid: \(uploadsOid)")
+    print("Activated StoryStreamService with oid: \(storyStreamOid)")
+    print("Activated MediaService with oid: \(mediaOid)")
         print("host.json: \(hostJsonPath)")
 
     // Set up signal handling for graceful shutdown

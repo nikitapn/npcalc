@@ -50,7 +50,7 @@ DOCKER_CMD=(
     # Mount project sub-trees the server needs at runtime
     -v "$ROOT_DIR/swift_server":/app/swift_server:ro
     -v "$ROOT_DIR/certs":/app/certs:ro
-    -v "$ROOT_DIR/client/public":/app/runtime/www
+    -v "$ROOT_DIR/new_client/dist":/app/runtime/www  # rw — host.json lives here
     -v "$ROOT_DIR/sample_data":/app/sample_data      # rw — SQLite DB lives here
 
     # Expose the RPC/HTTP port

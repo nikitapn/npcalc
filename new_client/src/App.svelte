@@ -1,11 +1,13 @@
 <script lang="ts">
+  import Journal from "./view/Journal.svelte";
   import Solutions from "./view/Solutions.svelte";
   import Fertilizers from "./view/Fertilizers.svelte";
   import { mockSolutions, mockFertilizers } from "./lib/mockData";
 
-  type View = "calculator" | "solutions" | "fertilizers" | "chat" | "about";
+  type View = "journal" | "calculator" | "solutions" | "fertilizers" | "chat" | "about";
 
   const navItems: Array<{ id: View; label: string; blurb: string }> = [
+    { id: "journal", label: "Journal", blurb: "Capture crop progress as a story feed." },
     { id: "calculator", label: "Calculator", blurb: "Mix recipes fast on touch screens." },
     { id: "solutions", label: "Solutions", blurb: "Browse reusable nutrient targets." },
     { id: "fertilizers", label: "Fertilizers", blurb: "Inspect products and element ratios." },
@@ -14,7 +16,7 @@
   ];
 
   let mobileMenuEnabled = $state(false);
-  let currentView = $state<View>("solutions");
+  let currentView = $state<View>("journal");
 
   function changeView(view: View) {
     mobileMenuEnabled = false;
@@ -25,7 +27,7 @@
 </script>
 
 <svelte:head>
-  <title>NScalc Mobile Client</title>
+  <title>NScalc Grow Journal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
@@ -37,8 +39,8 @@
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-2xl">
           <p class="text-xs font-semibold uppercase tracking-[0.3em] text-ocean-300">NScalc</p>
-          <h1 class="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">A mobile-first control surface for nutrient work.</h1>
-          <p class="mt-3 text-sm leading-6 text-ocean-100/80 sm:text-base">The old desktop layout packs too much horizontal structure into every screen. This version keeps actions large, data cards scrollable, and list views usable on phones.</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">A mobile-first grow journal with nutrient context built in.</h1>
+          <p class="mt-3 text-sm leading-6 text-ocean-100/80 sm:text-base">The new shell keeps stories, measurements, and upload status readable on phones first, while leaving room for the calculator and solution library beside it.</p>
         </div>
 
         <form class="panel-surface hairline grid gap-3 rounded-3xl p-3 sm:grid-cols-2 lg:min-w-[28rem] lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
@@ -89,7 +91,9 @@
   <main class="relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
     <section class="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
       <div class="panel-surface rounded-[2rem] p-4 sm:p-6">
-        {#if currentView === "calculator"}
+        {#if currentView === "journal"}
+          <Journal />
+        {:else if currentView === "calculator"}
           <div class="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Calculator cockpit</p>
@@ -166,6 +170,14 @@
           <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Data snapshot</p>
           <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div class="rounded-3xl bg-black/20 p-4">
+              <p class="text-ocean-100/70">Journal</p>
+              <p class="mt-1 text-lg font-semibold text-white">RPC-backed</p>
+            </div>
+            <div class="rounded-3xl bg-black/20 p-4">
+              <p class="text-ocean-100/70">Transport</p>
+              <p class="mt-1 text-lg font-semibold text-white">NPRPC</p>
+            </div>
+            <div class="rounded-3xl bg-black/20 p-4">
               <p class="text-ocean-100/70">Solutions</p>
               <p class="mt-1 text-2xl font-semibold text-white">{mockSolutions.length}</p>
             </div>
@@ -179,8 +191,8 @@
         <section class="panel-surface rounded-[2rem] p-5">
           <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Mobile priorities</p>
           <ol class="mt-4 space-y-3 text-sm leading-6 text-ocean-100/80">
+            <li>Keep story context visible while uploads continue in the background.</li>
             <li>Collapse dense control groups into stacked sections.</li>
-            <li>Keep long lists performant and scroll-stable.</li>
             <li>Avoid desktop-only hover affordances for core actions.</li>
           </ol>
         </section>
