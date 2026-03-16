@@ -34,6 +34,22 @@ class CalculatorServantImpl: CalculatorServant, @unchecked Sendable {
         }
     }
 
+    override func getCalculatorBootstrap(solution_limit: UInt32, fertilizer_limit: UInt32) -> CalculatorBootstrap {
+        do {
+            let solutionNames = try calculations.topSolutionNames(limit: max(Int(solution_limit), 8))
+            let fertilizerIDs = try calculations.topFertilizerIDs(limit: max(Int(fertilizer_limit), 12))
+            let bootstrapSolutions = try solutions.bootstrap(names: solutionNames, limit: solution_limit)
+            let bootstrapFertilizers = try fertilizers.bootstrap(ids: fertilizerIDs, limit: fertilizer_limit)
+            return CalculatorBootstrap(
+                solutions: bootstrapSolutions.map { $0.toRpc() },
+                fertilizers: bootstrapFertilizers.map { $0.toRpc() }
+            )
+        } catch {
+            print("[CalculatorServantImpl] getCalculatorBootstrap failed: \(error)")
+            return CalculatorBootstrap(solutions: [], fertilizers: [])
+        }
+    }
+
     override func listSolutionsPage(query: String, author: String, cursor: String, limit: UInt32) -> SolutionCursorPage {
         do {
             let page = try solutions.listPage(query: query, author: author, cursor: cursor, limit: limit)
@@ -88,8 +104,8 @@ do {
         .setLogLevel(.trace)
         .withHostname("localhost")
         .withHttp(httpPort)
-            .ssl(certFile: certFile, keyFile: keyFile)
-            .enableHttp3()
+            // .ssl(certFile: certFile, keyFile: keyFile)
+            // .enableHttp3()
             .rootDir(wwwRoot)
         .build()
 

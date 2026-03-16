@@ -3,25 +3,36 @@
   import Solution from "./Solution.svelte";
   import Virtual from "./Virtual.svelte";
   import { solutionCardFromRpc, type SolutionCardData } from "../lib/catalogData";
-  import { getNscalcRpc } from "../lib/nscalcRpc";
+  import { listSolutionsPageCached } from "../lib/catalogRpcCache";
+  import { getSolutionsViewState, setSolutionsViewState } from "../lib/catalogViewState";
 
-  let search = $state("");
-  let author = $state("");
-  let solutions = $state<SolutionCardData[]>([]);
-  let nextCursor = $state<string | null>(null);
-  let loadingInitial = $state(true);
+  const initialState = getSolutionsViewState();
+
+  let search = $state(initialState.search);
+  let author = $state(initialState.author);
+  let solutions = $state<SolutionCardData[]>(initialState.items);
+  let nextCursor = $state<string | null>(initialState.nextCursor);
+  let loadingInitial = $state(!initialState.ready);
   let loadingMore = $state(false);
   let errorMessage = $state<string | null>(null);
   let activeRequest = 0;
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
+  let filtersInitialized = false;
 
   onMount(() => {
-    void reloadSolutions();
+    if (!initialState.ready) {
+      void reloadSolutions();
+    }
   });
 
   $effect(() => {
     search;
     author;
+
+    if (!filtersInitialized) {
+      filtersInitialized = true;
+      return;
+    }
 
     if (debounceHandle) {
       clearTimeout(debounceHandle);
@@ -37,6 +48,16 @@
     };
   });
 
+  $effect(() => {
+    setSolutionsViewState({
+      ready: !loadingInitial,
+      search,
+      author,
+      items: solutions,
+      nextCursor,
+    });
+  });
+
   const visibleSolutions = $derived(solutions);
 
   async function reloadSolutions(): Promise<void> {
@@ -45,13 +66,12 @@
     errorMessage = null;
 
     try {
-      const { calculator } = await getNscalcRpc();
-      const page = await calculator.ListSolutionsPage(search.trim(), author.trim(), "", 24);
+      const page = await listSolutionsPageCached(search.trim(), author.trim(), "", 24);
       if (requestId !== activeRequest) {
         return;
       }
       solutions = page.items.map(solutionCardFromRpc);
-      nextCursor = page.next_cursor ?? null;
+      nextCursor = page.nextCursor;
     } catch (error) {
       if (requestId !== activeRequest) {
         return;
@@ -75,13 +95,12 @@
     loadingMore = true;
 
     try {
-      const { calculator } = await getNscalcRpc();
-      const page = await calculator.ListSolutionsPage(search.trim(), author.trim(), nextCursor, 24);
+      const page = await listSolutionsPageCached(search.trim(), author.trim(), nextCursor, 24);
       if (requestId !== activeRequest) {
         return;
       }
       solutions = [...solutions, ...page.items.map(solutionCardFromRpc)];
-      nextCursor = page.next_cursor ?? null;
+      nextCursor = page.nextCursor;
     } catch (error) {
       if (requestId !== activeRequest) {
         return;
@@ -130,10 +149,12 @@
   {:else}
     <Virtual
       items={visibleSolutions}
-      itemHeight={372}
+      itemHeight={640}
       minColumnWidth={320}
       gap={18}
-      viewportClass="h-[68vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
+      autoMeasure={true}
+      frameClass="h-[68vh] rounded-[1.75rem] border border-white/10 bg-black/10"
+      viewportClass="h-full p-3 sm:p-4"
       getKey={(solution) => (solution as SolutionCardData).id}
     >
       {#snippet children(solution, index)}

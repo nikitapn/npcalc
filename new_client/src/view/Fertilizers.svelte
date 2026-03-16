@@ -2,23 +2,34 @@
   import { onMount } from "svelte";
   import Virtual from "./Virtual.svelte";
   import { fertilizerCardFromRpc, type FertilizerCardData } from "../lib/catalogData";
-  import { getNscalcRpc } from "../lib/nscalcRpc";
+  import { listFertilizersPageCached } from "../lib/catalogRpcCache";
+  import { getFertilizersViewState, setFertilizersViewState } from "../lib/catalogViewState";
 
-  let search = $state("");
-  let fertilizers = $state<FertilizerCardData[]>([]);
-  let nextCursor = $state<string | null>(null);
-  let loadingInitial = $state(true);
+  const initialState = getFertilizersViewState();
+
+  let search = $state(initialState.search);
+  let fertilizers = $state<FertilizerCardData[]>(initialState.items);
+  let nextCursor = $state<string | null>(initialState.nextCursor);
+  let loadingInitial = $state(!initialState.ready);
   let loadingMore = $state(false);
   let errorMessage = $state<string | null>(null);
   let activeRequest = 0;
   let debounceHandle: ReturnType<typeof setTimeout> | null = null;
+  let filtersInitialized = false;
 
   onMount(() => {
-    void reloadFertilizers();
+    if (!initialState.ready) {
+      void reloadFertilizers();
+    }
   });
 
   $effect(() => {
     search;
+
+    if (!filtersInitialized) {
+      filtersInitialized = true;
+      return;
+    }
 
     if (debounceHandle) {
       clearTimeout(debounceHandle);
@@ -34,6 +45,15 @@
     };
   });
 
+  $effect(() => {
+    setFertilizersViewState({
+      ready: !loadingInitial,
+      search,
+      items: fertilizers,
+      nextCursor,
+    });
+  });
+
   const filteredFertilizers = $derived(fertilizers);
 
   async function reloadFertilizers(): Promise<void> {
@@ -42,13 +62,12 @@
     errorMessage = null;
 
     try {
-      const { calculator } = await getNscalcRpc();
-      const page = await calculator.ListFertilizersPage(search.trim(), "", 24);
+      const page = await listFertilizersPageCached(search.trim(), "", 24);
       if (requestId !== activeRequest) {
         return;
       }
       fertilizers = page.items.map(fertilizerCardFromRpc);
-      nextCursor = page.next_cursor ?? null;
+      nextCursor = page.nextCursor;
     } catch (error) {
       if (requestId !== activeRequest) {
         return;
@@ -72,13 +91,12 @@
     loadingMore = true;
 
     try {
-      const { calculator } = await getNscalcRpc();
-      const page = await calculator.ListFertilizersPage(search.trim(), nextCursor, 24);
+      const page = await listFertilizersPageCached(search.trim(), nextCursor, 24);
       if (requestId !== activeRequest) {
         return;
       }
       fertilizers = [...fertilizers, ...page.items.map(fertilizerCardFromRpc)];
-      nextCursor = page.next_cursor ?? null;
+      nextCursor = page.nextCursor;
     } catch (error) {
       if (requestId !== activeRequest) {
         return;
@@ -123,7 +141,8 @@
       itemHeight={250}
       minColumnWidth={280}
       gap={18}
-      viewportClass="h-[62vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
+      frameClass="h-[62vh] rounded-[1.75rem] border border-white/10 bg-black/10"
+      viewportClass="h-full p-3 sm:p-4"
       getKey={(fertilizer) => (fertilizer as FertilizerCardData).id}
     >
       {#snippet children(fertilizer)}

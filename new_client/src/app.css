@@ -41,6 +41,18 @@
 		color: var(--color-ocean-50);
 	}
 
+	select {
+		color-scheme: dark;
+		background-color: rgb(8 21 46 / 0.92);
+		color: var(--color-white);
+	}
+
+	option,
+	optgroup {
+		background-color: var(--color-ocean-900);
+		color: var(--color-ocean-50);
+	}
+
 	#app {
 		min-height: 100vh;
 	}

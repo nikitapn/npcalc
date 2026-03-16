@@ -198,6 +198,41 @@ struct FertilizerService: Sendable {
         }
     }
 
+    func bootstrap(ids: [Int64], limit: UInt32) throws -> [FertilizerRecord] {
+        let normalizedLimit = normalizedPageLimit(limit, defaultLimit: 12, maxLimit: 32)
+        guard normalizedLimit > 0 else {
+            return []
+        }
+
+        let allFertilizers = try getAll()
+        var selected: [FertilizerRecord] = []
+        var usedIDs = Set<Int64>()
+
+        for id in ids {
+            guard selected.count < normalizedLimit else {
+                break
+            }
+            guard let match = allFertilizers.first(where: { $0.id == id }), !usedIDs.contains(id) else {
+                continue
+            }
+            selected.append(match)
+            usedIDs.insert(id)
+        }
+
+        for fertilizer in allFertilizers {
+            guard selected.count < normalizedLimit else {
+                break
+            }
+            guard let id = fertilizer.id, !usedIDs.contains(id) else {
+                continue
+            }
+            selected.append(fertilizer)
+            usedIDs.insert(id)
+        }
+
+        return selected
+    }
+
     private func buildPage(from rows: [FertilizerRecord], limit: Int) throws -> CursorPage<FertilizerRecord> {
         let items = Array(rows.prefix(limit))
         let nextCursor: String?

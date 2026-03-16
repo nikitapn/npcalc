@@ -55,6 +55,11 @@ message FertilizerCursorPage {
   next_cursor?: string;
 }
 
+message CalculatorBootstrap {
+  solutions: Solution[];
+  fertilizers: Fertilizer[];
+}
+
 message TargetElement  {
   value: f64;
   valueBase: f64;
@@ -220,6 +225,7 @@ interface Chat {
 
 interface Calculator {
   void GetData(solutions: out direct vector<Solution>, fertilizers: out direct vector<Fertilizer>);
+  CalculatorBootstrap GetCalculatorBootstrap(solution_limit: in u32, fertilizer_limit: in u32);
   SolutionCursorPage ListSolutionsPage(query: in string, author: in string, cursor: in string, limit: in u32);
   FertilizerCursorPage ListFertilizersPage(query: in string, cursor: in string, limit: in u32);
   void Subscribe(obj: /*DataObserver*/ in object );

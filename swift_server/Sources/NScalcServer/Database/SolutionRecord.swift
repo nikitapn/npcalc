@@ -163,6 +163,41 @@ struct SolutionService: Sendable {
         }
     }
 
+    func bootstrap(names: [String], limit: UInt32) throws -> [SolutionRecord] {
+        let normalizedLimit = normalizedPageLimit(limit, defaultLimit: 8, maxLimit: 24)
+        guard normalizedLimit > 0 else {
+            return []
+        }
+
+        let allSolutions = try getAll()
+        var selected: [SolutionRecord] = []
+        var usedIDs = Set<Int64>()
+
+        for name in names {
+            guard selected.count < normalizedLimit else {
+                break
+            }
+            guard let match = allSolutions.first(where: { $0.name == name }), let id = match.id, !usedIDs.contains(id) else {
+                continue
+            }
+            selected.append(match)
+            usedIDs.insert(id)
+        }
+
+        for solution in allSolutions {
+            guard selected.count < normalizedLimit else {
+                break
+            }
+            guard let id = solution.id, !usedIDs.contains(id) else {
+                continue
+            }
+            selected.append(solution)
+            usedIDs.insert(id)
+        }
+
+        return selected
+    }
+
     private func buildPage(from rows: [SolutionRecord], limit: Int) throws -> CursorPage<SolutionRecord> {
         let items = Array(rows.prefix(limit))
         let nextCursor: String?

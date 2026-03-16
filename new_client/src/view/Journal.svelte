@@ -104,10 +104,17 @@
   let createStoryVisibility = $state<VisibilityOption>("Unlisted");
   let createStorySolutionId = $state("42");
   let lastActionMessage = $state<string | null>(null);
+  let journalRoot = $state<HTMLElement | null>(null);
+  let windowScrollY = $state(0);
   let activeStoryRequest = 0;
   let activeWatchGeneration = 0;
   let activeStoryStream: StoryWatchHandle | null = null;
   let composerFileInput = $state<HTMLInputElement | null>(null);
+
+  const storyOverlayTop = $derived.by(() => {
+    windowScrollY;
+    return 24 - (journalRoot?.getBoundingClientRect().top ?? 0);
+  });
 
   const filteredStories = $derived.by(() => {
     const query = search.trim().toLowerCase();
@@ -206,6 +213,25 @@
     stopStoryWatch();
   });
 
+  $effect(() => {
+    if (!selectedStory || typeof document === "undefined") {
+      return;
+    }
+
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousHtmlOverflow = htmlStyle.overflow;
+
+    bodyStyle.overflow = "hidden";
+    htmlStyle.overflow = "hidden";
+
+    return () => {
+      bodyStyle.overflow = previousBodyOverflow;
+      htmlStyle.overflow = previousHtmlOverflow;
+    };
+  });
+
   async function loadStories(preferredSlug?: string): Promise<void> {
     loadingError = null;
     lastActionMessage = null;
@@ -274,19 +300,6 @@
     localUploads = [];
     loadingStory = false;
     stopStoryWatch();
-  }
-
-  function handleStoryModalBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      clearSelectedStory();
-    }
-  }
-
-  function handleStoryModalBackdropKeydown(event: KeyboardEvent): void {
-    if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) {
-      event.preventDefault();
-      clearSelectedStory();
-    }
   }
 
   function handleWindowKeydown(event: KeyboardEvent): void {
@@ -970,17 +983,17 @@
   }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
+<svelte:window bind:scrollY={windowScrollY} onkeydown={handleWindowKeydown} />
 
-<section class="space-y-5">
-  <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+<section bind:this={journalRoot} class="relative space-y-5">
+  <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
     <div class="max-w-3xl">
       <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Grow journal</p>
       <h2 class="mt-2 text-2xl font-semibold text-white sm:text-3xl">Track a crop like a living story, not a pile of detached uploads.</h2>
       <p class="mt-3 text-sm leading-6 text-ocean-100/80">This screen now talks to the Swift mock journal services end to end: story creation, timeline updates, live watch events, and browser media uploads all move through the generated NPRPC contract.</p>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-3">
+    <div class="grid gap-3 sm:grid-cols-3 2xl:min-w-68">
       <div class="rounded-3xl border border-white/10 bg-black/20 px-4 py-3">
         <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Stories</p>
         <p class="mt-2 text-2xl font-semibold text-white">{summary.stories}</p>
@@ -997,11 +1010,11 @@
   </div>
 
   {#if loadingError}
-    <div class="rounded-[1.5rem] border border-rose-300/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{loadingError}</div>
+    <div class="rounded-3xl border border-rose-300/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{loadingError}</div>
   {/if}
 
   {#if lastActionMessage}
-    <div class="rounded-[1.5rem] border border-emerald-300/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{lastActionMessage}</div>
+    <div class="rounded-3xl border border-emerald-300/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{lastActionMessage}</div>
   {/if}
 
   <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_15rem]">
@@ -1068,15 +1081,15 @@
       </div>
 
       {#if !storiesLoaded}
-        <div class="rounded-[1.5rem] border border-white/10 bg-black/18 px-4 py-5 text-sm text-ocean-100/75">Connecting to the Swift journal service...</div>
+        <div class="rounded-3xl border border-white/10 bg-black/18 px-4 py-5 text-sm text-ocean-100/75">Connecting to the Swift journal service...</div>
       {:else if filteredStories.length === 0}
-        <div class="rounded-[1.5rem] border border-white/10 bg-black/18 px-4 py-5 text-sm text-ocean-100/75">No stories match the current filter.</div>
+        <div class="rounded-3xl border border-white/10 bg-black/18 px-4 py-5 text-sm text-ocean-100/75">No stories match the current filter.</div>
       {:else}
         <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
         {#each filteredStories as story}
           <button
             type="button"
-            class={`overflow-hidden rounded-[1.5rem] border text-left transition ${selectedStory?.id === story.id ? 'border-sand-200/50 bg-white/8 shadow-[0_18px_44px_rgba(0,0,0,0.28)]' : 'border-white/10 bg-black/18 hover:bg-white/8'}`}
+            class={`overflow-hidden rounded-3xl border text-left transition ${selectedStory?.id === story.id ? 'border-sand-200/50 bg-white/8 shadow-[0_18px_44px_rgba(0,0,0,0.28)]' : 'border-white/10 bg-black/18 hover:bg-white/8'}`}
             onclick={() => void selectStory(story.slug)}
           >
             <div class="h-28 px-4 py-4" style={`background:${storyGradient(story)}`}>
@@ -1112,9 +1125,10 @@
   </div>
 
   {#if selectedStory}
-    <div class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ocean-950/82 px-4 py-6 backdrop-blur-md sm:px-6 sm:py-10" role="button" tabindex="0" aria-label="Close story modal" onclick={handleStoryModalBackdropClick} onkeydown={handleStoryModalBackdropKeydown}>
-      <div class="w-full max-w-7xl rounded-[2rem] border border-white/10 bg-ocean-950/96 shadow-[0_24px_80px_rgba(0,0,0,0.5)]">
-        <div class="sticky top-0 z-10 flex items-center justify-between gap-4 rounded-t-[2rem] border-b border-white/10 bg-ocean-950/95 px-5 py-4 backdrop-blur xl:px-6">
+    <div class="fixed inset-0 z-30 bg-ocean-950/28 backdrop-blur-[1px]" aria-hidden="true"></div>
+    <div class="pointer-events-none absolute inset-x-0 z-40 flex items-start justify-center px-4 py-0 sm:px-6" style={`top:${storyOverlayTop}px;`}>
+      <div class="pointer-events-auto flex max-h-[calc(100vh-3rem)] w-full max-w-7xl flex-col overflow-hidden rounded-4xl border border-white/12 bg-ocean-950/98 shadow-[0_28px_90px_rgba(0,0,0,0.5)] sm:max-h-[calc(100vh-5rem)]">
+        <div class="z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-ocean-950 px-5 py-4 backdrop-blur xl:px-6">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300">Story modal</p>
             <p class="mt-1 text-sm text-ocean-100/75">{selectedStory.title} • {selectedUpdates.length} timeline entries</p>
@@ -1122,8 +1136,8 @@
           <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={clearSelectedStory}>Close</button>
         </div>
 
-        <div class="space-y-4 p-4 sm:p-5 xl:p-6">
-          <section class="overflow-hidden rounded-[2rem] border border-white/10 bg-black/12">
+        <div class="min-h-0 space-y-4 overflow-y-auto p-4 sm:p-5 xl:p-6">
+          <section class="overflow-hidden rounded-4xl border border-white/10 bg-black/26">
             <div class="min-h-52 p-5 sm:p-6" style={`background:${storyGradient(selectedStory)}`}>
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div class="max-w-3xl">
@@ -1140,11 +1154,11 @@
                 </div>
 
                 <div class="space-y-3">
-                  <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
+                  <div class="rounded-3xl border border-white/15 bg-black/34 p-4 text-sm text-white/85">
                     <p class="text-xs uppercase tracking-[0.22em] text-white/65">Cover</p>
                     <p class="mt-2 max-w-52 leading-6">{selectedStory.cover_image_url ?? "No cover image yet. Attach one through the upload service and it will surface here."}</p>
                   </div>
-                  <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
+                  <div class="rounded-3xl border border-white/15 bg-black/34 p-4 text-sm text-white/85">
                     <p class="text-xs uppercase tracking-[0.22em] text-white/65">Live watch</p>
                     <p class="mt-2 font-semibold">{storyWatchLabel()}</p>
                     <p class="mt-1 text-xs leading-5 text-white/70">The selected story keeps an open bidi stream so update creation, upload progress, and asset attachment can surface without a manual reload.</p>
@@ -1156,16 +1170,16 @@
               </div>
             </div>
 
-            <div class="grid gap-3 border-t border-white/10 bg-black/18 px-5 py-4 sm:grid-cols-3 sm:px-6">
-              <div class="rounded-3xl bg-black/20 px-4 py-3">
+            <div class="grid gap-3 border-t border-white/10 bg-black/26 px-5 py-4 sm:grid-cols-3 sm:px-6">
+              <div class="rounded-3xl bg-black/34 px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Created</p>
                 <p class="mt-2 text-lg font-semibold text-white">{formatTimestamp(selectedStory.created_at)}</p>
               </div>
-              <div class="rounded-3xl bg-black/20 px-4 py-3">
+              <div class="rounded-3xl bg-black/34 px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Last update</p>
                 <p class="mt-2 text-lg font-semibold text-white">{relativeTime(selectedStory.updated_at)}</p>
               </div>
-              <div class="rounded-3xl bg-black/20 px-4 py-3">
+              <div class="rounded-3xl bg-black/34 px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Timeline depth</p>
                 <p class="mt-2 text-lg font-semibold text-white">{selectedUpdates.length} entries</p>
               </div>

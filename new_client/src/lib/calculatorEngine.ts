@@ -1,5 +1,5 @@
 export type ElementKey = "NO3" | "NH4" | "P" | "K" | "Ca" | "Mg" | "S" | "Cl" | "Fe" | "Zn" | "B" | "Mn" | "Cu" | "Mo";
-export type FertilizerElementKey = "N" | "P" | "K" | "Ca" | "Mg" | "S";
+export type FertilizerElementKey = "N" | "NO3" | "NH4" | "P" | "K" | "Ca" | "Mg" | "S";
 export type SolutionElements = Record<ElementKey, number>;
 
 export type FertilizerInput = {
@@ -114,10 +114,17 @@ export function computeElementsFromDoses(fertilizers: FertilizerInput[], doses: 
       continue;
     }
 
-    const nitrogenTotal = fertilizer.elements.N ?? 0;
-    const nitrogenSplit = inferNitrogenSplit(fertilizer.name);
-    result.NO3 += nitrogenTotal * dose * nitrogenSplit.no3;
-    result.NH4 += nitrogenTotal * dose * nitrogenSplit.nh4;
+    const explicitNo3 = fertilizer.elements.NO3 ?? 0;
+    const explicitNh4 = fertilizer.elements.NH4 ?? 0;
+    if (explicitNo3 > 0 || explicitNh4 > 0) {
+      result.NO3 += explicitNo3 * dose;
+      result.NH4 += explicitNh4 * dose;
+    } else {
+      const nitrogenTotal = fertilizer.elements.N ?? 0;
+      const nitrogenSplit = inferNitrogenSplit(fertilizer.name);
+      result.NO3 += nitrogenTotal * dose * nitrogenSplit.no3;
+      result.NH4 += nitrogenTotal * dose * nitrogenSplit.nh4;
+    }
     result.P += (fertilizer.elements.P ?? 0) * dose;
     result.K += (fertilizer.elements.K ?? 0) * dose;
     result.Ca += (fertilizer.elements.Ca ?? 0) * dose;
@@ -187,8 +194,14 @@ function buildSolveResult(targetElements: SolutionElements, fertilizers: Fertili
 function fertilizerContribution(fertilizer: FertilizerInput, key: ElementKey): number {
   switch (key) {
     case "NO3":
+      if ((fertilizer.elements.NO3 ?? 0) > 0 || (fertilizer.elements.NH4 ?? 0) > 0) {
+        return fertilizer.elements.NO3 ?? 0;
+      }
       return (fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).no3;
     case "NH4":
+      if ((fertilizer.elements.NO3 ?? 0) > 0 || (fertilizer.elements.NH4 ?? 0) > 0) {
+        return fertilizer.elements.NH4 ?? 0;
+      }
       return (fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).nh4;
     case "P":
     case "K":

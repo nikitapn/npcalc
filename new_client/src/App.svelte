@@ -36,24 +36,24 @@
 
   <header class="sticky top-0 z-20 border-b border-white/10 bg-ocean-900/80 backdrop-blur-xl">
     <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between 2xl:gap-6">
         <div class="max-w-2xl">
           <p class="text-xs font-semibold uppercase tracking-[0.3em] text-ocean-300">NScalc</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">A mobile-first grow journal with nutrient context built in.</h1>
           <p class="mt-3 text-sm leading-6 text-ocean-100/80 sm:text-base">The new shell keeps stories, measurements, and upload status readable on phones first, while leaving room for the calculator and solution library beside it.</p>
         </div>
 
-        <form class="panel-surface hairline grid gap-3 rounded-3xl p-3 sm:grid-cols-2 lg:min-w-[28rem] lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
+        <form class="panel-surface hairline grid w-full gap-3 rounded-3xl p-3 sm:grid-cols-2 lg:max-w-3xl lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end xl:max-w-184">
           <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-[0.2em] text-ocean-200/70">
             Email
-            <input class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="email" placeholder="grower@example.com" />
+            <input class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="email" placeholder="grower@example.com" />
           </label>
           <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-[0.2em] text-ocean-200/70">
             Password
-            <input class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="password" placeholder="••••••••" />
+            <input class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="password" placeholder="••••••••" />
           </label>
-          <button type="button" class="touch-target rounded-2xl bg-ocean-400 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-ocean-300">Log in</button>
-          <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10">Register</button>
+          <button type="button" class="touch-target rounded-2xl bg-ocean-400 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-ocean-300 lg:self-end">Log in</button>
+          <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 lg:self-end">Register</button>
         </form>
       </div>
 
@@ -72,11 +72,11 @@
       </div>
 
       <nav class:mt-5={true} class:hidden={!mobileMenuEnabled} class="hidden md:block">
-        <div class="flex gap-2 overflow-x-auto pb-1">
+        <div class="flex flex-wrap gap-2 pb-1">
           {#each navItems as item}
             <button
               type="button"
-              class={`touch-target shrink-0 rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${currentView === item.id ? 'bg-sand-200 text-ocean-950' : 'bg-white/5 text-ocean-50 hover:bg-white/10'}`}
+              class={`touch-target min-w-56 flex-1 rounded-2xl px-4 py-3 text-left text-sm font-medium transition lg:min-w-0 lg:flex-none ${currentView === item.id ? 'bg-sand-200 text-ocean-950' : 'bg-white/5 text-ocean-50 hover:bg-white/10'}`}
               onclick={() => changeView(item.id)}
             >
               <span class="block font-semibold">{item.label}</span>
@@ -89,8 +89,8 @@
   </header>
 
   <main class="relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <section class="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.85fr)]">
-      <div class="panel-surface rounded-[2rem] p-4 sm:p-6">
+    <section class={`grid gap-4 ${currentView === "calculator" ? 'grid-cols-1' : '2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start'}`}>
+      <div class={`panel-surface relative rounded-4xl p-4 sm:p-6 ${currentView === "journal" ? 'z-30' : ''}`}>
         {#if currentView === "journal"}
           <Journal />
         {:else if currentView === "calculator"}
@@ -131,38 +131,40 @@
         {/if}
       </div>
 
-      <aside class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-        <section class="panel-surface rounded-[2rem] p-5">
-          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Data snapshot</p>
-          <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div class="rounded-3xl bg-black/20 p-4">
-              <p class="text-ocean-100/70">Journal</p>
-              <p class="mt-1 text-lg font-semibold text-white">RPC-backed</p>
+      {#if currentView !== "calculator"}
+        <aside class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-1">
+          <section class="panel-surface rounded-4xl p-5">
+            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Data snapshot</p>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div class="rounded-3xl bg-black/20 p-4">
+                <p class="text-ocean-100/70">Journal</p>
+                <p class="mt-1 text-lg font-semibold text-white">RPC-backed</p>
+              </div>
+              <div class="rounded-3xl bg-black/20 p-4">
+                <p class="text-ocean-100/70">Transport</p>
+                <p class="mt-1 text-lg font-semibold text-white">NPRPC</p>
+              </div>
+              <div class="rounded-3xl bg-black/20 p-4">
+                <p class="text-ocean-100/70">Solutions</p>
+                <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
+              </div>
+              <div class="rounded-3xl bg-black/20 p-4">
+                <p class="text-ocean-100/70">Fertilizers</p>
+                <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
+              </div>
             </div>
-            <div class="rounded-3xl bg-black/20 p-4">
-              <p class="text-ocean-100/70">Transport</p>
-              <p class="mt-1 text-lg font-semibold text-white">NPRPC</p>
-            </div>
-            <div class="rounded-3xl bg-black/20 p-4">
-              <p class="text-ocean-100/70">Solutions</p>
-              <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
-            </div>
-            <div class="rounded-3xl bg-black/20 p-4">
-              <p class="text-ocean-100/70">Fertilizers</p>
-              <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <section class="panel-surface rounded-[2rem] p-5">
-          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Mobile priorities</p>
-          <ol class="mt-4 space-y-3 text-sm leading-6 text-ocean-100/80">
-            <li>Keep story context visible while uploads continue in the background.</li>
-            <li>Collapse dense control groups into stacked sections.</li>
-            <li>Avoid desktop-only hover affordances for core actions.</li>
-          </ol>
-        </section>
-      </aside>
+          <section class="panel-surface rounded-4xl p-5">
+            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Mobile priorities</p>
+            <ol class="mt-4 space-y-3 text-sm leading-6 text-ocean-100/80">
+              <li>Keep story context visible while uploads continue in the background.</li>
+              <li>Collapse dense control groups into stacked sections.</li>
+              <li>Avoid desktop-only hover affordances for core actions.</li>
+            </ol>
+          </section>
+        </aside>
+      {/if}
     </section>
   </main>
 </div>

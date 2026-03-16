@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const srcDir = fileURLToPath(new URL('./src', import.meta.url))
 const rpcDir = fileURLToPath(new URL('../client/src/rpc', import.meta.url))
 const nprpcEsm = fileURLToPath(new URL('../external/nprpc/nprpc_js/dist/index.esm.js', import.meta.url))
-const swiftProxyTarget = process.env.NSCALC_SWIFT_PROXY_TARGET ?? 'https://localhost:8443'
+const swiftProxyTarget = process.env.NSCALC_SWIFT_PROXY_TARGET ?? 'http://localhost:8443'
 
 // https://vite.dev/config/
 export default defineConfig({

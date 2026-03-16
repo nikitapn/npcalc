@@ -1,5 +1,6 @@
 // Copyright (c) 2025 nikitapnn1@gmail.com
 
+import Foundation
 import GRDB
 import NScalc
 
@@ -92,6 +93,66 @@ struct CalculationService: Sendable {
         try db.dbQueue.read { db in
             try CalculationRecord.filter(Column("userId") == userId).fetchAll(db)
         }
+    }
+
+    func allRecords() throws -> [CalculationRecord] {
+        try db.dbQueue.read { db in
+            try CalculationRecord.fetchAll(db)
+        }
+    }
+
+    func topFertilizerIDs(limit: Int) throws -> [Int64] {
+        guard limit > 0 else {
+            return []
+        }
+
+        let decoder = JSONDecoder()
+        var counts: [Int64: Int] = [:]
+
+        for calculation in try allRecords() {
+            guard let data = calculation.fertilizersIds.data(using: .utf8) else {
+                continue
+            }
+            guard let ids = try? decoder.decode([Int64].self, from: data) else {
+                continue
+            }
+            for id in ids {
+                counts[id, default: 0] += 1
+            }
+        }
+
+        return counts.sorted { lhs, rhs in
+            if lhs.value != rhs.value {
+                return lhs.value > rhs.value
+            }
+            return lhs.key < rhs.key
+        }
+        .prefix(limit)
+        .map(\ .key)
+    }
+
+    func topSolutionNames(limit: Int) throws -> [String] {
+        guard limit > 0 else {
+            return []
+        }
+
+        var counts: [String: Int] = [:]
+        for calculation in try allRecords() {
+            let normalizedName = calculation.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedName.isEmpty else {
+                continue
+            }
+            counts[normalizedName, default: 0] += 1
+        }
+
+        return counts.sorted { lhs, rhs in
+            if lhs.value != rhs.value {
+                return lhs.value > rhs.value
+            }
+            return lhs.key.localizedCaseInsensitiveCompare(rhs.key) == .orderedAscending
+        }
+        .prefix(limit)
+        .map(\ .key)
     }
 
     func hasCalculation(id: Int64) throws -> Bool {
