@@ -216,7 +216,13 @@ export class Fertilizer extends TableItemWithOwnership {
 		f.set_id(data.id);
 		f.mx_value = data.name;
 		f.formula.mx_value = data.formula;
-		f.parse_formula();
+		for (let i = 0; i < ELEMENTS_MAX; ++i) {
+			f.elements[i] = data.elements[i];
+		}
+		f.type = data.type;
+		f.bottle = data.bottle;
+		f.density = data.density;
+		f.cost = data.cost;
 		return f;
 	}
 

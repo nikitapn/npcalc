@@ -100,6 +100,51 @@ final class AppDatabase: Sendable {
             """)
         }
 
+          migrator.registerMigration("v2_fertilizer_parsed_fields") { db in
+            try db.execute(sql: """
+              ALTER TABLE Fertilizer ADD COLUMN NO3 REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN NH4 REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN P REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN K REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Ca REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Mg REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN S REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Cl REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Fe REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Zn REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN B REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Mn REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Cu REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN Mo REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN bottle INTEGER NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN fertilizerType INTEGER NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN density REAL NOT NULL DEFAULT 0;
+              ALTER TABLE Fertilizer ADD COLUMN cost REAL NOT NULL DEFAULT 1;
+            """)
+
+            let rows = try Row.fetchAll(db, sql: "SELECT id, formula FROM Fertilizer")
+            for row in rows {
+              let id: Int64 = row["id"]
+              let formula = (row["formula"] as String?) ?? ""
+              let parsed = try FertilizerFormulaParser.parse(script: formula)
+              try db.execute(
+                sql: """
+                  UPDATE Fertilizer
+                  SET NO3 = ?, NH4 = ?, P = ?, K = ?, Ca = ?, Mg = ?, S = ?, Cl = ?,
+                    Fe = ?, Zn = ?, B = ?, Mn = ?, Cu = ?, Mo = ?,
+                    bottle = ?, fertilizerType = ?, density = ?, cost = ?
+                  WHERE id = ?
+                """,
+                arguments: [
+                  parsed.elements[0], parsed.elements[1], parsed.elements[2], parsed.elements[3], parsed.elements[4], parsed.elements[5], parsed.elements[6], parsed.elements[7],
+                  parsed.elements[8], parsed.elements[9], parsed.elements[10], parsed.elements[11], parsed.elements[12], parsed.elements[13],
+                  parsed.bottle, parsed.fertilizerType, parsed.density, parsed.cost,
+                  id,
+                ]
+              )
+            }
+          }
+
         try migrator.migrate(dbQueue)
     }
 }

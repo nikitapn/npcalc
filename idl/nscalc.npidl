@@ -38,6 +38,21 @@ message Fertilizer {
   userName: string;
   name: string;
   formula: string;
+  elements: f64[TARGET_ELEMENT_COUNT];
+  bottle: FertilizerBottle;
+  type: FertilizerType;
+  density: f64;
+  cost: f64;
+}
+
+message SolutionCursorPage {
+  items: Solution[];
+  next_cursor?: string;
+}
+
+message FertilizerCursorPage {
+  items: Fertilizer[];
+  next_cursor?: string;
 }
 
 message TargetElement  {
@@ -157,7 +172,6 @@ message RealtimeServerEvent {
   footstep?: Footstep;
 }
 
-[trusted=false]
 interface Authorizator {
   UserData LogIn(login: in string, password: in string) raises(AuthorizationFailed);
   UserData LogInWithSessionId(session_id: in string) raises(AuthorizationFailed);
@@ -169,7 +183,6 @@ interface Authorizator {
   void RegisterStepTwo(username: in string, code: in u32) raises(RegistrationFailed);
 }
 
-[trusted=false]
 interface RegisteredUser {
   void GetMyCalculations(calculations: out direct vector<Calculation>);
 
@@ -178,9 +191,9 @@ interface RegisteredUser {
   void SetSolutionElements(id: in u32, name: in vector<SolutionElement>) raises(PermissionViolation);
   void DeleteSolution(id: in u32) raises(PermissionViolation);
 
-  u32 AddFertilizer(name: in string, formula: in string);
+  u32 AddFertilizer(name: in string, formula: in string) raises(InvalidArgument);
   void SetFertilizerName(id: in u32, name: in string) raises(PermissionViolation);
-  void SetFertilizerFormula(id: in u32, name: in string) raises(PermissionViolation);
+  void SetFertilizerFormula(id: in u32, name: in string) raises(PermissionViolation, InvalidArgument);
   void DeleteFertilizer(id: in u32) raises(PermissionViolation);
 
   u32 UpdateCalculation(calculation: in Calculation);
@@ -197,19 +210,18 @@ interface DataObserver {
 
 // Stream-based replacement for Subscribe()/SendFootstep().
 // Keep the legacy callback-object API during migration.
-[trusted=false]
 interface Realtime {
   bidi_stream<RealtimeClientEvent, RealtimeServerEvent> Connect(session_id: in string);
 }
 
-[trusted=false]
 interface Chat {
   bidi_stream<ChatMessage, ChatMessage> Connect(session_id: in string);
 }
 
-[trusted=false]
 interface Calculator {
   void GetData(solutions: out direct vector<Solution>, fertilizers: out direct vector<Fertilizer>);
+  SolutionCursorPage ListSolutionsPage(query: in string, author: in string, cursor: in string, limit: in u32);
+  FertilizerCursorPage ListFertilizersPage(query: in string, cursor: in string, limit: in u32);
   void Subscribe(obj: /*DataObserver*/ in object );
   void GetGuestCalculations(calculations: out direct vector<Calculation>);
   void SendFootstep(footstep: in Footstep);

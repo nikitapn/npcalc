@@ -65,10 +65,12 @@ final class RegisteredUserImpl: RegisteredUserServant, @unchecked Sendable {
     _ = try solutionService.deleteSolution(id: Int64(id), userId: userId)
   }
 
-  override func addFertilizer(name: String, formula: String) -> UInt32 {
+  override func addFertilizer(name: String, formula: String) throws -> UInt32 {
     do {
       let fertilizer = try fertilizerService.addFertilizer(userId: userId, name: name, formula: formula)
       return UInt32(fertilizer.id ?? 0)
+    } catch let error as FertilizerValidationError {
+      throw InvalidArgument(msg: error.errorDescription ?? "Invalid fertilizer formula")
     } catch {
       print("[RegisteredUser] addFertilizer failed: \(error)")
       return 0
@@ -80,7 +82,11 @@ final class RegisteredUserImpl: RegisteredUserServant, @unchecked Sendable {
   }
 
   override func setFertilizerFormula(id: UInt32, name: String) throws {
-    try fertilizerService.updateFormula(id: Int64(id), userId: userId, formula: name)
+    do {
+      try fertilizerService.updateFormula(id: Int64(id), userId: userId, formula: name)
+    } catch let error as FertilizerValidationError {
+      throw InvalidArgument(msg: error.errorDescription ?? "Invalid fertilizer formula")
+    }
   }
 
   override func deleteFertilizer(id: UInt32) throws {

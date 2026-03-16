@@ -1,8 +1,8 @@
 <script lang="ts">
+  import Calculator from "./view/Calculator.svelte";
   import Journal from "./view/Journal.svelte";
   import Solutions from "./view/Solutions.svelte";
   import Fertilizers from "./view/Fertilizers.svelte";
-  import { mockSolutions, mockFertilizers } from "./lib/mockData";
 
   type View = "journal" | "calculator" | "solutions" | "fertilizers" | "chat" | "about";
 
@@ -94,41 +94,7 @@
         {#if currentView === "journal"}
           <Journal />
         {:else if currentView === "calculator"}
-          <div class="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Calculator cockpit</p>
-              <h2 class="mt-2 text-2xl font-semibold text-white sm:text-3xl">Rework the heavy desktop spreadsheet into thumb-friendly panels.</h2>
-              <p class="mt-3 max-w-2xl text-sm leading-6 text-ocean-100/80">Primary inputs should become stacked cards, formula sections should collapse on small screens, and the recipe preview should pin below the controls instead of fighting for horizontal space.</p>
-
-              <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-ocean-300/70">NH4 %</p>
-                  <p class="mt-2 text-3xl font-semibold text-white">7.11</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-ocean-300/70">N:K</p>
-                  <p class="mt-2 text-3xl font-semibold text-white">0.96</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-ocean-300/70">K:Ca</p>
-                  <p class="mt-2 text-3xl font-semibold text-white">1.47</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-ocean-300/70">EC</p>
-                  <p class="mt-2 text-3xl font-semibold text-white">2.38</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="rounded-[1.75rem] border border-white/10 bg-black/20 p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-sand-200">Migration notes</p>
-              <ul class="mt-4 space-y-3 text-sm leading-6 text-ocean-100/80">
-                <li>Touch targets should stay above 44px for sliders, toggles, and ingredient selectors.</li>
-                <li>Complex nutrient tables should collapse into accordion sections on narrow widths.</li>
-                <li>Persistent action buttons should be bottom-aligned on phones to avoid header reach.</li>
-              </ul>
-            </div>
-          </div>
+          <Calculator />
         {:else if currentView === "solutions"}
           <Solutions />
         {:else if currentView === "fertilizers"}
@@ -179,11 +145,11 @@
             </div>
             <div class="rounded-3xl bg-black/20 p-4">
               <p class="text-ocean-100/70">Solutions</p>
-              <p class="mt-1 text-2xl font-semibold text-white">{mockSolutions.length}</p>
+              <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
             </div>
             <div class="rounded-3xl bg-black/20 p-4">
               <p class="text-ocean-100/70">Fertilizers</p>
-              <p class="mt-1 text-2xl font-semibold text-white">{mockFertilizers.length}</p>
+              <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
             </div>
           </div>
         </section>

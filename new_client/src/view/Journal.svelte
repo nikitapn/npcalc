@@ -44,6 +44,10 @@
     errorMessage?: string;
     startedAt: string;
   };
+  type UploadBatch = {
+    kind: ComposerKind;
+    files: File[];
+  };
   type StoryWatchHandle = {
     writer: { close(): void };
     reader: AsyncIterable<StoryStreamServerEvent> & { cancel(): void };
@@ -182,9 +186,16 @@
     return Boolean(selectedStory) && (composerBody.trim().length > 0 || composerFiles.length > 0);
   });
 
+  const inferredComposerKinds = $derived.by<ComposerKind[]>(() => {
+    return inferComposerKindsFromFiles(composerFiles);
+  });
+
+  const hasMixedComposerMedia = $derived.by(() => {
+    return inferredComposerKinds.length > 1;
+  });
+
   const effectiveComposerKind = $derived.by<ComposerKind>(() => {
-    const inferredKind = inferComposerKindFromFiles(composerFiles);
-    return inferredKind ?? composerKind;
+    return inferredComposerKinds[0] ?? composerKind;
   });
 
   onMount(() => {
@@ -201,15 +212,11 @@
 
     try {
       const refreshedStories = await refreshStoriesOnly();
-      const nextSlug = preferredSlug ?? selectedStorySlug ?? refreshedStories[0]?.slug ?? null;
+      const nextSlug = preferredSlug ?? selectedStorySlug ?? null;
       if (nextSlug) {
         await selectStory(nextSlug);
       } else {
-        selectedStory = null;
-        selectedStorySlug = null;
-        selectedUpdates = [];
-        localUploads = [];
-        stopStoryWatch();
+        clearSelectedStory();
       }
     } catch (error) {
       loadingError = formatError(error, "Could not load journal stories.");
@@ -257,6 +264,34 @@
       if (requestId === activeStoryRequest) {
         loadingStory = false;
       }
+    }
+  }
+
+  function clearSelectedStory(): void {
+    selectedStory = null;
+    selectedStorySlug = null;
+    selectedUpdates = [];
+    localUploads = [];
+    loadingStory = false;
+    stopStoryWatch();
+  }
+
+  function handleStoryModalBackdropClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) {
+      clearSelectedStory();
+    }
+  }
+
+  function handleStoryModalBackdropKeydown(event: KeyboardEvent): void {
+    if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) {
+      event.preventDefault();
+      clearSelectedStory();
+    }
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && selectedStory) {
+      clearSelectedStory();
     }
   }
 
@@ -309,22 +344,42 @@
     loadingError = null;
     lastActionMessage = null;
 
-    const kind = UpdateKind[effectiveComposerKind as keyof typeof UpdateKind] as UpdateKind;
-    const req: CreateUpdateRequest = {
-      story_id: selectedStory.id,
-      title: composerTitle.trim() ? composerTitle.trim() : undefined,
-      body: composerBody.trim(),
-      kind,
-      measurements: buildMeasurementPayload(kind),
-    };
+    const uploadBatches = partitionUploadFiles(composerFiles);
 
     try {
       const { journal } = await getJournalRpc();
-      const createdUpdate = await journal.CreateUpdate(req);
-      applyStoryUpdate(createdUpdate);
+      const uploadErrors: string[] = [];
+      const createdUpdates: StoryUpdate[] = [];
 
-      const filesToUpload = [...composerFiles];
-      const uploadErrors = filesToUpload.length > 0 ? await uploadComposerFiles(createdUpdate, filesToUpload) : [];
+      if (uploadBatches.length === 0) {
+        const kind = UpdateKind[composerKind as keyof typeof UpdateKind] as UpdateKind;
+        const req: CreateUpdateRequest = {
+          story_id: selectedStory.id,
+          title: composerTitle.trim() ? composerTitle.trim() : undefined,
+          body: composerBody.trim(),
+          kind,
+          measurements: buildMeasurementPayload(kind),
+        };
+        const createdUpdate = await journal.CreateUpdate(req);
+        createdUpdates.push(createdUpdate);
+        applyStoryUpdate(createdUpdate);
+      } else {
+        for (const [batchIndex, batch] of uploadBatches.entries()) {
+          const kind = UpdateKind[batch.kind as keyof typeof UpdateKind] as UpdateKind;
+          const req: CreateUpdateRequest = {
+            story_id: selectedStory.id,
+            title: buildSplitUpdateTitle(composerTitle, batch.kind, uploadBatches.length),
+            body: buildSplitUpdateBody(composerBody, composerTitle, batch.kind, batchIndex, uploadBatches.length),
+            kind,
+            measurements: buildMeasurementPayload(kind),
+          };
+          const createdUpdate = await journal.CreateUpdate(req);
+          createdUpdates.push(createdUpdate);
+          applyStoryUpdate(createdUpdate);
+          const batchErrors = await uploadComposerFiles(createdUpdate, batch.files);
+          uploadErrors.push(...batchErrors);
+        }
+      }
 
       composerTitle = "";
       composerBody = "";
@@ -334,9 +389,11 @@
       }
 
       if (uploadErrors.length === 0) {
-        lastActionMessage = filesToUpload.length > 0
-          ? "Update posted and media uploaded through the RPC stream path."
-          : "Update posted to the server mock.";
+        lastActionMessage = uploadBatches.length > 1
+          ? "Mixed media split into separate photo and video updates."
+          : uploadBatches.length === 1
+            ? "Update posted and media uploaded through the RPC stream path."
+            : "Update posted to the server mock.";
       } else {
         loadingError = uploadErrors.join(" ");
         lastActionMessage = "Update posted, but one or more uploads failed.";
@@ -633,9 +690,30 @@
     return null;
   }
 
-  function inferComposerKindFromFiles(files: File[]): ComposerKind | null {
-    let hasImage = false;
-    let hasVideo = false;
+  function inferComposerKindsFromFiles(files: File[]): ComposerKind[] {
+    const kinds = new Set<ComposerKind>();
+
+    for (const file of files) {
+      const descriptor = describeUploadFile(file);
+      if (!descriptor) {
+        continue;
+      }
+      kinds.add(descriptor.kind === MediaKind.Video ? "Video" : "PhotoSet");
+    }
+
+    const orderedKinds: ComposerKind[] = [];
+    if (kinds.has("PhotoSet")) {
+      orderedKinds.push("PhotoSet");
+    }
+    if (kinds.has("Video")) {
+      orderedKinds.push("Video");
+    }
+    return orderedKinds;
+  }
+
+  function partitionUploadFiles(files: File[]): UploadBatch[] {
+    const images: File[] = [];
+    const videos: File[] = [];
 
     for (const file of files) {
       const descriptor = describeUploadFile(file);
@@ -643,20 +721,45 @@
         continue;
       }
       if (descriptor.kind === MediaKind.Video) {
-        hasVideo = true;
-      }
-      if (descriptor.kind === MediaKind.Image) {
-        hasImage = true;
+        videos.push(file);
+      } else {
+        images.push(file);
       }
     }
 
-    if (hasVideo) {
-      return "Video";
+    const batches: UploadBatch[] = [];
+    if (images.length > 0) {
+      batches.push({ kind: "PhotoSet", files: images });
     }
-    if (hasImage) {
-      return "PhotoSet";
+    if (videos.length > 0) {
+      batches.push({ kind: "Video", files: videos });
     }
-    return null;
+    return batches;
+  }
+
+  function buildSplitUpdateTitle(title: string, kind: ComposerKind, totalBatches: number): string | undefined {
+    const trimmedTitle = title.trim();
+    if (trimmedTitle.length === 0) {
+      return undefined;
+    }
+    if (totalBatches <= 1) {
+      return trimmedTitle;
+    }
+    return `${trimmedTitle} (${kind === "Video" ? "Video" : "Photos"})`;
+  }
+
+  function buildSplitUpdateBody(body: string, title: string, kind: ComposerKind, batchIndex: number, totalBatches: number): string {
+    const trimmedBody = body.trim();
+    if (totalBatches <= 1 || batchIndex === 0 || trimmedBody.length === 0) {
+      return trimmedBody;
+    }
+
+    const trimmedTitle = title.trim();
+    const assetLabel = kind === "Video" ? "video" : "photo";
+    if (trimmedTitle.length > 0) {
+      return `Companion ${assetLabel} upload for "${trimmedTitle}".`;
+    }
+    return `Companion ${assetLabel} upload for the same journal note.`;
   }
 
   function storyWatchLabel(): string {
@@ -867,6 +970,8 @@
   }
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 <section class="space-y-5">
   <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
     <div class="max-w-3xl">
@@ -955,7 +1060,7 @@
     </div>
   </section>
 
-  <div class="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
+  <div class="space-y-4">
     <aside class="rounded-[1.75rem] border border-white/10 bg-black/12 p-3 sm:p-4">
       <div class="mb-3 flex items-center justify-between text-sm text-ocean-100/70">
         <span>{filteredStories.length} visible stories</span>
@@ -999,66 +1104,82 @@
         </div>
       {/if}
     </aside>
+    {#if storiesLoaded}
+      <div class="rounded-[1.75rem] border border-dashed border-white/10 bg-black/8 p-6 text-sm text-ocean-100/72">
+        Tap any story card to open it in a focused modal view, similar to a gallery post. The inline story pane has been removed so the feed stays compact.
+      </div>
+    {/if}
+  </div>
 
-    {#if selectedStory}
-      <div class="space-y-4">
-        <section class="overflow-hidden rounded-[2rem] border border-white/10 bg-black/12">
-          <div class="min-h-52 p-5 sm:p-6" style={`background:${storyGradient(selectedStory)}`}>
-            <div class="flex flex-wrap items-start justify-between gap-4">
-              <div class="max-w-3xl">
-                <div class="flex flex-wrap gap-2">
-                  <span class={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${stageBadge(selectedStory.stage)}`}>{stageName(selectedStory.stage)}</span>
-                  <span class="rounded-full bg-black/25 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{visibilityName(selectedStory.visibility)}</span>
-                  {#if selectedStory.solution_name}
-                    <span class="rounded-full bg-black/25 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{selectedStory.solution_name}</span>
-                  {/if}
-                </div>
-                <h3 class="mt-4 text-3xl font-semibold text-white sm:text-4xl">{selectedStory.title}</h3>
-                <p class="mt-2 text-sm uppercase tracking-[0.22em] text-white/70">{selectedStory.crop_name} • {selectedStory.author_name}</p>
-                <p class="mt-4 max-w-2xl text-sm leading-6 text-white/86">{selectedStory.description}</p>
-              </div>
-
-              <div class="space-y-3">
-                <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
-                  <p class="text-xs uppercase tracking-[0.22em] text-white/65">Cover</p>
-                  <p class="mt-2 max-w-52 leading-6">{selectedStory.cover_image_url ?? "No cover image yet. Attach one through the upload service and it will surface here."}</p>
-                </div>
-                <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
-                  <p class="text-xs uppercase tracking-[0.22em] text-white/65">Live watch</p>
-                  <p class="mt-2 font-semibold">{storyWatchLabel()}</p>
-                  <p class="mt-1 text-xs leading-5 text-white/70">The selected story keeps an open bidi stream so update creation, upload progress, and asset attachment can surface without a manual reload.</p>
-                  {#if storyWatchError}
-                    <p class="mt-2 text-xs text-rose-200">{storyWatchError}</p>
-                  {/if}
-                </div>
-              </div>
-            </div>
+  {#if selectedStory}
+    <div class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ocean-950/82 px-4 py-6 backdrop-blur-md sm:px-6 sm:py-10" role="button" tabindex="0" aria-label="Close story modal" onclick={handleStoryModalBackdropClick} onkeydown={handleStoryModalBackdropKeydown}>
+      <div class="w-full max-w-7xl rounded-[2rem] border border-white/10 bg-ocean-950/96 shadow-[0_24px_80px_rgba(0,0,0,0.5)]">
+        <div class="sticky top-0 z-10 flex items-center justify-between gap-4 rounded-t-[2rem] border-b border-white/10 bg-ocean-950/95 px-5 py-4 backdrop-blur xl:px-6">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300">Story modal</p>
+            <p class="mt-1 text-sm text-ocean-100/75">{selectedStory.title} • {selectedUpdates.length} timeline entries</p>
           </div>
+          <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={clearSelectedStory}>Close</button>
+        </div>
 
-          <div class="grid gap-3 border-t border-white/10 bg-black/18 px-5 py-4 sm:grid-cols-3 sm:px-6">
-            <div class="rounded-3xl bg-black/20 px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Created</p>
-              <p class="mt-2 text-lg font-semibold text-white">{formatTimestamp(selectedStory.created_at)}</p>
-            </div>
-            <div class="rounded-3xl bg-black/20 px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Last update</p>
-              <p class="mt-2 text-lg font-semibold text-white">{relativeTime(selectedStory.updated_at)}</p>
-            </div>
-            <div class="rounded-3xl bg-black/20 px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Timeline depth</p>
-              <p class="mt-2 text-lg font-semibold text-white">{selectedUpdates.length} entries</p>
-            </div>
-          </div>
-        </section>
+        <div class="space-y-4 p-4 sm:p-5 xl:p-6">
+          <section class="overflow-hidden rounded-[2rem] border border-white/10 bg-black/12">
+            <div class="min-h-52 p-5 sm:p-6" style={`background:${storyGradient(selectedStory)}`}>
+              <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="max-w-3xl">
+                  <div class="flex flex-wrap gap-2">
+                    <span class={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${stageBadge(selectedStory.stage)}`}>{stageName(selectedStory.stage)}</span>
+                    <span class="rounded-full bg-black/25 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{visibilityName(selectedStory.visibility)}</span>
+                    {#if selectedStory.solution_name}
+                      <span class="rounded-full bg-black/25 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{selectedStory.solution_name}</span>
+                    {/if}
+                  </div>
+                  <h3 class="mt-4 text-3xl font-semibold text-white sm:text-4xl">{selectedStory.title}</h3>
+                  <p class="mt-2 text-sm uppercase tracking-[0.22em] text-white/70">{selectedStory.crop_name} • {selectedStory.author_name}</p>
+                  <p class="mt-4 max-w-2xl text-sm leading-6 text-white/86">{selectedStory.description}</p>
+                </div>
 
-        <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <section class="space-y-4">
-            {#if loadingStory}
-              <div class="rounded-[1.75rem] border border-white/10 bg-black/12 px-5 py-6 text-sm text-ocean-100/75">Loading story timeline...</div>
-            {/if}
+                <div class="space-y-3">
+                  <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
+                    <p class="text-xs uppercase tracking-[0.22em] text-white/65">Cover</p>
+                    <p class="mt-2 max-w-52 leading-6">{selectedStory.cover_image_url ?? "No cover image yet. Attach one through the upload service and it will surface here."}</p>
+                  </div>
+                  <div class="rounded-[1.5rem] border border-white/15 bg-black/22 p-4 text-sm text-white/85">
+                    <p class="text-xs uppercase tracking-[0.22em] text-white/65">Live watch</p>
+                    <p class="mt-2 font-semibold">{storyWatchLabel()}</p>
+                    <p class="mt-1 text-xs leading-5 text-white/70">The selected story keeps an open bidi stream so update creation, upload progress, and asset attachment can surface without a manual reload.</p>
+                    {#if storyWatchError}
+                      <p class="mt-2 text-xs text-rose-200">{storyWatchError}</p>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            {#each selectedUpdates as update}
-              <article class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6">
+            <div class="grid gap-3 border-t border-white/10 bg-black/18 px-5 py-4 sm:grid-cols-3 sm:px-6">
+              <div class="rounded-3xl bg-black/20 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Created</p>
+                <p class="mt-2 text-lg font-semibold text-white">{formatTimestamp(selectedStory.created_at)}</p>
+              </div>
+              <div class="rounded-3xl bg-black/20 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Last update</p>
+                <p class="mt-2 text-lg font-semibold text-white">{relativeTime(selectedStory.updated_at)}</p>
+              </div>
+              <div class="rounded-3xl bg-black/20 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.22em] text-ocean-300/70">Timeline depth</p>
+                <p class="mt-2 text-lg font-semibold text-white">{selectedUpdates.length} entries</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <section class="space-y-4">
+              {#if loadingStory}
+                <div class="rounded-[1.75rem] border border-white/10 bg-black/12 px-5 py-6 text-sm text-ocean-100/75">Loading story timeline...</div>
+              {/if}
+
+              {#each selectedUpdates as update}
+                <article class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div class="flex flex-wrap items-center gap-2">
@@ -1114,40 +1235,40 @@
                     {/each}
                   </div>
                 {/if}
-              </article>
-            {/each}
-          </section>
-
-          <aside class="space-y-4">
-            <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Upload queue</p>
-              {#if selectedUploads.length > 0}
-                <div class="mt-4 space-y-3">
-                {#each selectedUploads as upload}
-                  <div class="rounded-3xl border border-white/10 bg-black/18 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                      <div>
-                        <p class="font-semibold text-white">{upload.label}</p>
-                        <p class="mt-1 text-xs uppercase tracking-[0.18em] text-ocean-200/60">{upload.kind} • {upload.detail}</p>
-                      </div>
-                      <span class={`text-xs font-semibold uppercase tracking-[0.18em] ${uploadTone(upload.status)}`}>{upload.status}</span>
-                    </div>
-                    <div class="mt-3 h-2 rounded-full bg-white/8">
-                      <div class="h-full rounded-full bg-ocean-300" style={`width:${upload.progressPct}%`}></div>
-                    </div>
-                    <p class="mt-2 text-xs text-ocean-100/70">{upload.progressPct}% complete</p>
-                  </div>
-                {/each}
-                </div>
-              {:else}
-                <p class="mt-4 text-sm text-ocean-100/75">No upload activity yet. Pick files in the composer below and they will stream through the upload RPC, report progress here, then attach back onto the selected story.</p>
-              {/if}
+                </article>
+              {/each}
             </section>
 
-            <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Quick compose</p>
-              <p class="mt-3 text-sm leading-6 text-ocean-100/72">Posting creates the update first, then image and video files stream in chunks through the upload service and attach to that update. Text is optional when media is attached.</p>
-              <div class="mt-4 space-y-3">
+            <aside class="space-y-4">
+              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Upload queue</p>
+                {#if selectedUploads.length > 0}
+                  <div class="mt-4 space-y-3">
+                  {#each selectedUploads as upload}
+                    <div class="rounded-3xl border border-white/10 bg-black/18 p-4">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <p class="font-semibold text-white">{upload.label}</p>
+                          <p class="mt-1 text-xs uppercase tracking-[0.18em] text-ocean-200/60">{upload.kind} • {upload.detail}</p>
+                        </div>
+                        <span class={`text-xs font-semibold uppercase tracking-[0.18em] ${uploadTone(upload.status)}`}>{upload.status}</span>
+                      </div>
+                      <div class="mt-3 h-2 rounded-full bg-white/8">
+                        <div class="h-full rounded-full bg-ocean-300" style={`width:${upload.progressPct}%`}></div>
+                      </div>
+                      <p class="mt-2 text-xs text-ocean-100/70">{upload.progressPct}% complete</p>
+                    </div>
+                  {/each}
+                  </div>
+                {:else}
+                  <p class="mt-4 text-sm text-ocean-100/75">No upload activity yet. Pick files in the composer below and they will stream through the upload RPC, report progress here, then attach back onto the selected story.</p>
+                {/if}
+              </section>
+
+              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Quick compose</p>
+                <p class="mt-3 text-sm leading-6 text-ocean-100/72">Posting creates the update first, then image and video files stream in chunks through the upload service and attach to that update. Text is optional when media is attached.</p>
+                <div class="mt-4 space-y-3">
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Entry type
                   <select bind:value={composerKind} disabled={composerFiles.length > 0} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300 disabled:cursor-not-allowed disabled:opacity-60">
@@ -1156,7 +1277,13 @@
                     {/each}
                   </select>
                   {#if composerFiles.length > 0}
-                    <p class="text-[11px] font-medium normal-case tracking-normal text-ocean-100/65">Auto-set to {effectiveComposerKind} from the attached media.</p>
+                    <p class="text-[11px] font-medium normal-case tracking-normal text-ocean-100/65">
+                      {#if hasMixedComposerMedia}
+                        Mixed media will be split into separate PhotoSet and Video updates.
+                      {:else}
+                        Auto-set to {effectiveComposerKind} from the attached media.
+                      {/if}
+                    </p>
                   {/if}
                 </label>
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
@@ -1184,25 +1311,22 @@
                     {/each}
                   </div>
                 {/if}
-                <button type="button" class="touch-target w-full rounded-2xl bg-sand-200 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-sand-100 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void submitUpdate()} disabled={submittingUpdate || !canSubmitUpdate}>{submittingUpdate ? "Posting..." : composerFiles.length > 0 ? `Post ${effectiveComposerKind} update and upload media` : `Post ${effectiveComposerKind} RPC update`}</button>
-              </div>
-            </section>
+                  <button type="button" class="touch-target w-full rounded-2xl bg-sand-200 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-sand-100 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void submitUpdate()} disabled={submittingUpdate || !canSubmitUpdate}>{submittingUpdate ? "Posting..." : hasMixedComposerMedia ? "Post split media updates" : composerFiles.length > 0 ? `Post ${effectiveComposerKind} update and upload media` : `Post ${effectiveComposerKind} RPC update`}</button>
+                </div>
+              </section>
 
-            <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Story direction</p>
-              <div class="mt-4 flex flex-wrap gap-2 text-sm text-ocean-100/80">
-                {#each storyDirection as stat}
-                  <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{stat}</span>
-                {/each}
-              </div>
-            </section>
-          </aside>
+              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Story direction</p>
+                <div class="mt-4 flex flex-wrap gap-2 text-sm text-ocean-100/80">
+                  {#each storyDirection as stat}
+                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{stat}</span>
+                  {/each}
+                </div>
+              </section>
+            </aside>
+          </div>
         </div>
       </div>
-    {:else if storiesLoaded}
-      <div class="rounded-[1.75rem] border border-white/10 bg-black/12 p-6 text-sm text-ocean-100/80">
-        Select a story to load its timeline from the server.
-      </div>
+    </div>
     {/if}
-  </div>
 </section>

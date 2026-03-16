@@ -179,7 +179,6 @@ exception ProcessingFailed {
   msg: string;
 }
 
-[trusted=false]
 interface JournalService {
   StoryPage ListStories(page: u32, page_size: u32);
   StoryDetail GetStory(slug: string) raises(NotFound);
@@ -193,19 +192,16 @@ interface JournalService {
   StoryUpdate AttachAsset(update_id: u64, asset_id: u64) raises(NotFound);
 }
 
-[trusted=false]
 interface UploadService {
   void UploadAsset(asset_id: u64, upload_token: string, data: client_stream<binary>);
   UploadProgress FinishUpload(asset_id: u64, upload_token: string) raises(NotFound, UploadRejected);
   boolean AbortUpload(asset_id: u64, upload_token: string);
 }
 
-[trusted=false]
 interface StoryStreamService {
   bidi_stream<StoryStreamClientEvent, StoryStreamServerEvent> WatchStory(story_id: u64);
 }
 
-[trusted=false]
 interface MediaService {
   string GetVideoDashManifest(asset_id: u64) raises(NotFound, ProcessingFailed);
   server_stream<binary> GetVideoDashSegmentRange(asset_id: u64, byte_offset: u64, byte_length: u64) raises(NotFound, ProcessingFailed);

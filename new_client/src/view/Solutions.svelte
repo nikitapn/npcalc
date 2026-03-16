@@ -1,21 +1,98 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Solution from "./Solution.svelte";
   import Virtual from "./Virtual.svelte";
-  import { mockSolutions, type SolutionCardData } from "../lib/mockData";
+  import { solutionCardFromRpc, type SolutionCardData } from "../lib/catalogData";
+  import { getNscalcRpc } from "../lib/nscalcRpc";
 
   let search = $state("");
-  let author = $state("all");
+  let author = $state("");
+  let solutions = $state<SolutionCardData[]>([]);
+  let nextCursor = $state<string | null>(null);
+  let loadingInitial = $state(true);
+  let loadingMore = $state(false);
+  let errorMessage = $state<string | null>(null);
+  let activeRequest = 0;
+  let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
-  const authors = Array.from(new Set(mockSolutions.map((solution: SolutionCardData) => solution.author)));
-  const filteredSolutions = $derived.by(() => {
-    const query = search.trim().toLowerCase();
-
-    return mockSolutions.filter((solution: SolutionCardData) => {
-      const matchesName = query.length === 0 || solution.name.toLowerCase().includes(query);
-      const matchesAuthor = author === "all" || solution.author === author;
-      return matchesName && matchesAuthor;
-    });
+  onMount(() => {
+    void reloadSolutions();
   });
+
+  $effect(() => {
+    search;
+    author;
+
+    if (debounceHandle) {
+      clearTimeout(debounceHandle);
+    }
+    debounceHandle = setTimeout(() => {
+      void reloadSolutions();
+    }, 180);
+
+    return () => {
+      if (debounceHandle) {
+        clearTimeout(debounceHandle);
+      }
+    };
+  });
+
+  const visibleSolutions = $derived(solutions);
+
+  async function reloadSolutions(): Promise<void> {
+    const requestId = ++activeRequest;
+    loadingInitial = true;
+    errorMessage = null;
+
+    try {
+      const { calculator } = await getNscalcRpc();
+      const page = await calculator.ListSolutionsPage(search.trim(), author.trim(), "", 24);
+      if (requestId !== activeRequest) {
+        return;
+      }
+      solutions = page.items.map(solutionCardFromRpc);
+      nextCursor = page.next_cursor ?? null;
+    } catch (error) {
+      if (requestId !== activeRequest) {
+        return;
+      }
+      solutions = [];
+      nextCursor = null;
+      errorMessage = error instanceof Error ? error.message : "Failed to load solutions.";
+    } finally {
+      if (requestId === activeRequest) {
+        loadingInitial = false;
+      }
+    }
+  }
+
+  async function loadMoreSolutions(): Promise<void> {
+    if (!nextCursor || loadingMore || loadingInitial) {
+      return;
+    }
+
+    const requestId = activeRequest;
+    loadingMore = true;
+
+    try {
+      const { calculator } = await getNscalcRpc();
+      const page = await calculator.ListSolutionsPage(search.trim(), author.trim(), nextCursor, 24);
+      if (requestId !== activeRequest) {
+        return;
+      }
+      solutions = [...solutions, ...page.items.map(solutionCardFromRpc)];
+      nextCursor = page.next_cursor ?? null;
+    } catch (error) {
+      if (requestId !== activeRequest) {
+        return;
+      }
+      errorMessage = error instanceof Error ? error.message : "Failed to load more solutions.";
+    } finally {
+      if (requestId === activeRequest) {
+        loadingMore = false;
+      }
+    }
+  }
 </script>
 
 <section class="space-y-5">
@@ -25,8 +102,8 @@
       <h2 class="mt-2 text-2xl font-semibold text-white sm:text-3xl">Scroll comfortably on phones without losing density on desktop.</h2>
     </div>
     <div class="flex flex-wrap items-center gap-3 text-sm text-ocean-100/75">
-      <span class="rounded-full bg-white/6 px-3 py-1.5">{filteredSolutions.length} visible</span>
-      <span class="rounded-full bg-white/6 px-3 py-1.5">{mockSolutions.length} total</span>
+      <span class="rounded-full bg-white/6 px-3 py-1.5">{visibleSolutions.length} loaded</span>
+      <span class="rounded-full bg-white/6 px-3 py-1.5">{nextCursor ? "More available" : "End of results"}</span>
     </div>
   </div>
 
@@ -38,25 +115,36 @@
 
     <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/80">
       Author
-      <select bind:value={author} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none transition focus:border-ocean-300 focus:bg-black/30">
-        <option value="all">All authors</option>
-        {#each authors as authorName}
-          <option value={authorName}>{authorName}</option>
-        {/each}
-      </select>
+      <input bind:value={author} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" placeholder="superuser, guest..." />
     </label>
   </div>
 
-  <Virtual
-    items={filteredSolutions}
-    itemHeight={372}
-    minColumnWidth={320}
-    gap={18}
-    viewportClass="h-[68vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
-    getKey={(solution) => (solution as SolutionCardData).id}
-  >
-    {#snippet children(solution, index)}
-      <Solution {solution} {index} />
-    {/snippet}
-  </Virtual>
+  {#if errorMessage}
+    <div class="rounded-[1.75rem] border border-rose-200/20 bg-rose-950/20 px-4 py-4 text-sm text-rose-100">{errorMessage}</div>
+  {/if}
+
+  {#if loadingInitial}
+    <div class="rounded-[1.75rem] border border-white/10 bg-black/10 px-4 py-10 text-sm text-ocean-100/75">Loading solutions from the RPC catalog...</div>
+  {:else if visibleSolutions.length === 0}
+    <div class="rounded-[1.75rem] border border-white/10 bg-black/10 px-4 py-10 text-sm text-ocean-100/75">No solutions match the current filters.</div>
+  {:else}
+    <Virtual
+      items={visibleSolutions}
+      itemHeight={372}
+      minColumnWidth={320}
+      gap={18}
+      viewportClass="h-[68vh] rounded-[1.75rem] border border-white/10 bg-black/10 p-3 sm:p-4"
+      getKey={(solution) => (solution as SolutionCardData).id}
+    >
+      {#snippet children(solution, index)}
+        <Solution {solution} {index} />
+      {/snippet}
+    </Virtual>
+
+    <div class="flex justify-center pt-1">
+      <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void loadMoreSolutions()} disabled={!nextCursor || loadingMore}>
+        {loadingMore ? "Loading more..." : nextCursor ? "Load more solutions" : "All solutions loaded"}
+      </button>
+    </div>
+  {/if}
 </section>

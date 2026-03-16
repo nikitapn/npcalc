@@ -125,10 +125,55 @@ struct SolutionService: Sendable {
         }
     }
 
+    func listPage(query: String, author: String, cursor: String, limit: UInt32) throws -> CursorPage<SolutionRecord> {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pageLimit = normalizedPageLimit(limit)
+        let decodedCursor = try CatalogCursorCodec.decode(cursor)
+
+        return try db.dbQueue.read { db in
+            let namePattern = "%\(normalizedQuery)%"
+            let rows = try SolutionRecord.fetchAll(db, sql: """
+                SELECT Solution.*, User.name AS user_name
+                FROM Solution
+                JOIN User ON Solution.userId = User.id
+                WHERE (? = '' OR lower(Solution.name) LIKE ?)
+                  AND (? = '' OR User.name = ?)
+                  AND (
+                    ? = ''
+                    OR Solution.name > ?
+                    OR (Solution.name = ? AND Solution.id > ?)
+                  )
+                ORDER BY Solution.name ASC, Solution.id ASC
+                LIMIT ?
+            """, arguments: [
+                normalizedQuery, namePattern,
+                normalizedAuthor, normalizedAuthor,
+                decodedCursor?.sortName ?? "", decodedCursor?.sortName ?? "", decodedCursor?.sortName ?? "", decodedCursor?.id ?? 0,
+                pageLimit + 1,
+            ])
+
+            return try buildPage(from: rows, limit: pageLimit)
+        }
+    }
+
     func getSolution(id: Int64) throws -> SolutionRecord? {
         try db.dbQueue.read { db in
             try SolutionRecord.filter(Column("id") == id).fetchOne(db)
         }
+    }
+
+    private func buildPage(from rows: [SolutionRecord], limit: Int) throws -> CursorPage<SolutionRecord> {
+        let items = Array(rows.prefix(limit))
+        let nextCursor: String?
+
+        if rows.count > limit, let last = items.last, let id = last.id {
+            nextCursor = try CatalogCursorCodec.encode(sortName: last.name, id: id)
+        } else {
+            nextCursor = nil
+        }
+
+        return CursorPage(items: items, nextCursor: nextCursor)
     }
 
     // MARK: Write

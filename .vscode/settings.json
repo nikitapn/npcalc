@@ -99,8 +99,11 @@
     "__node_handle": "cpp",
     "execution": "cpp",
     "print": "cpp",
-    "__hash_table": "cpp"
+    "__hash_table": "cpp",
+    "*.css": "tailwindcss",
+    "*.scss": "tailwindcss"
   },
+
   "C_Cpp.default.cppStandard": "c++23",
   "C_Cpp.default.compileCommands": [
     "${workspaceFolder}/compile_commands.json"

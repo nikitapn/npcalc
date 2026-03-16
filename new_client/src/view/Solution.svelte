@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SolutionCardData } from "../lib/mockData";
+  import type { SolutionCardData } from "../lib/catalogData";
 
   const { solution, index } = $props<{ solution: SolutionCardData; index: number }>();
 

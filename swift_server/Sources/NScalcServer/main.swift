@@ -34,6 +34,26 @@ class CalculatorServantImpl: CalculatorServant, @unchecked Sendable {
         }
     }
 
+    override func listSolutionsPage(query: String, author: String, cursor: String, limit: UInt32) -> SolutionCursorPage {
+        do {
+            let page = try solutions.listPage(query: query, author: author, cursor: cursor, limit: limit)
+            return SolutionCursorPage(items: page.items.map { $0.toRpc() }, next_cursor: page.nextCursor)
+        } catch {
+            print("[CalculatorServantImpl] listSolutionsPage failed: \(error)")
+            return SolutionCursorPage(items: [], next_cursor: nil)
+        }
+    }
+
+    override func listFertilizersPage(query: String, cursor: String, limit: UInt32) -> FertilizerCursorPage {
+        do {
+            let page = try fertilizers.listPage(query: query, cursor: cursor, limit: limit)
+            return FertilizerCursorPage(items: page.items.map { $0.toRpc() }, next_cursor: page.nextCursor)
+        } catch {
+            print("[CalculatorServantImpl] listFertilizersPage failed: \(error)")
+            return FertilizerCursorPage(items: [], next_cursor: nil)
+        }
+    }
+
     override func subscribe(obj: NPRPCObject) {
         // TODO: hook into DataObservers broadcast list
     }
