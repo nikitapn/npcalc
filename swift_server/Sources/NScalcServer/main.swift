@@ -89,8 +89,8 @@ class CalculatorServantImpl: CalculatorServant, @unchecked Sendable {
 }
 
 do {
-    let certFile = "/app/certs/localhost.crt"
-    let keyFile  = "/app/certs/localhost.key"
+    // let certFile = "/app/certs/localhost.crt"
+    // let keyFile  = "/app/certs/localhost.key"
     let httpPort: UInt16 = 8443
     let wwwRoot  = "/app/runtime/www"
     let dbPath   = "/app/sample_data/nscalc.db"
@@ -101,7 +101,7 @@ do {
     print("Database opened: \(dbPath)")
 
     let rpc = try RpcBuilder()
-        .setLogLevel(.trace)
+        .setLogLevel(.warn)
         .withHostname("localhost")
         .withHttp(httpPort)
             // .ssl(certFile: certFile, keyFile: keyFile)
@@ -124,7 +124,7 @@ do {
     let realtime = RealtimeServantImpl()
     let realtimeOid = try poa.activateObjectWithId(objectId: UInt64(5), servant: realtime, flags: .allowAll)
 
-    let journalStore = GrowJournalMockStore()
+    let journalStore = GrowJournalMockStore(publicRootPath: wwwRoot)
     let journal = JournalServiceServantImpl(store: journalStore)
     let journalOid = try poa.activateObjectWithId(objectId: UInt64(6), servant: journal, flags: .allowAll)
 
@@ -137,26 +137,27 @@ do {
     let media = MediaServiceServantImpl(store: journalStore)
     let mediaOid = try poa.activateObjectWithId(objectId: UInt64(9), servant: media, flags: .allowAll)
 
-        rpc.clearHostJson()
-        try rpc.addToHostJson(name: "calculator", objectId: calcOid)
-        try rpc.addToHostJson(name: "authorizator", objectId: authOid)
-        try rpc.addToHostJson(name: "chat", objectId: chatOid)
-        try rpc.addToHostJson(name: "realtime", objectId: realtimeOid)
-        try rpc.addToHostJson(name: "journal", objectId: journalOid)
-        try rpc.addToHostJson(name: "journal_uploads", objectId: uploadsOid)
-        try rpc.addToHostJson(name: "journal_stream", objectId: storyStreamOid)
-        try rpc.addToHostJson(name: "journal_media", objectId: mediaOid)
-        let hostJsonPath = try rpc.produceHostJson(outputPath: hostJsonOutputPath)
+    rpc.clearHostJson()
+    try rpc.addToHostJson(name: "calculator", objectId: calcOid)
+    try rpc.addToHostJson(name: "authorizator", objectId: authOid)
+    try rpc.addToHostJson(name: "chat", objectId: chatOid)
+    try rpc.addToHostJson(name: "realtime", objectId: realtimeOid)
+    try rpc.addToHostJson(name: "journal", objectId: journalOid)
+    try rpc.addToHostJson(name: "journal_uploads", objectId: uploadsOid)
+    try rpc.addToHostJson(name: "journal_stream", objectId: storyStreamOid)
+    try rpc.addToHostJson(name: "journal_media", objectId: mediaOid)
+    let hostJsonPath = try rpc.produceHostJson(outputPath: hostJsonOutputPath)
 
-    print("Activated Authorizator with oid: \(authOid)")
-    print("Activated ChatServant with oid: \(chatOid)")
-    print("Activated RealtimeServant with oid: \(realtimeOid)")
-    print("Activated JournalService with oid: \(journalOid)")
-    print("Activated UploadService with oid: \(uploadsOid)")
-    print("Activated StoryStreamService with oid: \(storyStreamOid)")
-    print("Activated MediaService with oid: \(mediaOid)")
+    if false {
+        print("Activated Authorizator with oid: \(authOid)")
+        print("Activated ChatServant with oid: \(chatOid)")
+        print("Activated RealtimeServant with oid: \(realtimeOid)")
+        print("Activated JournalService with oid: \(journalOid)")
+        print("Activated UploadService with oid: \(uploadsOid)")
+        print("Activated StoryStreamService with oid: \(storyStreamOid)")
+        print("Activated MediaService with oid: \(mediaOid)")
         print("host.json: \(hostJsonPath)")
-
+    }
     // Set up signal handling for graceful shutdown
     let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
     signalSource.setEventHandler {

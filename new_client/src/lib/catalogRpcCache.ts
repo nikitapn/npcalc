@@ -28,6 +28,10 @@ const solutionPageCache = new Map<string, CacheEntry<SolutionPageResult>>();
 const fertilizerPageCache = new Map<string, CacheEntry<FertilizerPageResult>>();
 const bootstrapCache = new Map<string, CacheEntry<BootstrapResult>>();
 
+function clearCache(cache: Map<string, CacheEntry<unknown>>): void {
+  cache.clear();
+}
+
 function buildKey(parts: Array<string | number | null | undefined>): string {
   return JSON.stringify(parts);
 }
@@ -66,9 +70,23 @@ async function resolveCached<T>(cache: Map<string, CacheEntry<T>>, key: string, 
 }
 
 export function clearCatalogRpcCache(): void {
-  solutionPageCache.clear();
-  fertilizerPageCache.clear();
-  bootstrapCache.clear();
+  clearCache(solutionPageCache);
+  clearCache(fertilizerPageCache);
+  clearCache(bootstrapCache);
+}
+
+export function invalidateSolutionsCatalogCache(): void {
+  clearCache(solutionPageCache);
+  clearCache(bootstrapCache);
+}
+
+export function invalidateFertilizersCatalogCache(): void {
+  clearCache(fertilizerPageCache);
+  clearCache(bootstrapCache);
+}
+
+export function invalidateCalculatorBootstrapCache(): void {
+  clearCache(bootstrapCache);
 }
 
 export async function listSolutionsPageCached(query: string, author: string, cursor: string, limit: number): Promise<SolutionPageResult> {

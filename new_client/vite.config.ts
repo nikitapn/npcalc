@@ -20,6 +20,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/mock': {
+        target: swiftProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   resolve: {

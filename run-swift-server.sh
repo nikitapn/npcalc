@@ -37,6 +37,9 @@ if [ ! -f "$ROOT_DIR/swift_server/.build/$BUILD_CONFIG/NScalcServer" ]; then
     exit 1
 fi
 
+echo "Republishing journal assets into the HTTP root..."
+"$ROOT_DIR/republish-journal-assets.sh" "$ROOT_DIR/new_client/dist"
+
 echo "Starting NScalc Swift server ($BUILD_CONFIG) inside Docker..."
 echo "  Image   : $DOCKER_IMAGE"
 echo "  Hostname: $HOSTNAME_ARG  Port: $PORT_ARG"

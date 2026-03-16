@@ -2,6 +2,119 @@ import Foundation
 import NPRPC
 import NScalc
 
+private final class GrowJournalPublicAssetPublisher {
+    private let fileManager = FileManager.default
+    private let mediaRootURL: URL
+    private let publicAssetsRootURL: URL
+
+    init(mediaRootPath: String = "/app/sample_data/grow_journal_media", publicRootPath: String = "/app/runtime/www") {
+        mediaRootURL = URL(fileURLWithPath: mediaRootPath, isDirectory: true)
+        publicAssetsRootURL = URL(fileURLWithPath: publicRootPath, isDirectory: true)
+            .appendingPathComponent("mock", isDirectory: true)
+            .appendingPathComponent("journal", isDirectory: true)
+            .appendingPathComponent("assets", isDirectory: true)
+    }
+
+    func stageAndPublishImageAsset(assetId: UInt64, originalFilename: String, payload: [UInt8]) throws {
+        let originalDirectoryURL = mediaRootURL
+            .appendingPathComponent("original", isDirectory: true)
+            .appendingPathComponent(String(assetId), isDirectory: true)
+        try fileManager.createDirectory(at: originalDirectoryURL, withIntermediateDirectories: true)
+
+        let sourceURL = originalDirectoryURL.appendingPathComponent("source.\(sanitizedExtension(from: originalFilename, fallback: "bin"))")
+        if fileManager.fileExists(atPath: sourceURL.path) {
+            try fileManager.removeItem(at: sourceURL)
+        }
+        try Data(payload).write(to: sourceURL, options: .atomic)
+        try publishImageAsset(assetId: assetId)
+    }
+
+    func publishImageAsset(assetId: UInt64) throws {
+        guard let sourceURL = originalSourceURL(assetId: assetId) else {
+            throw NSError(domain: "GrowJournalPublicAssetPublisher", code: 1, userInfo: [NSLocalizedDescriptionKey: "Original image for asset \(assetId) was not found."])
+        }
+
+        let publicAssetDirectoryURL = try preparePublicAssetDirectory(assetId: assetId)
+        try replaceWithLinkOrCopy(sourceURL: sourceURL, destinationURL: publicAssetDirectoryURL.appendingPathComponent("image"))
+    }
+
+    func hasImageAsset(assetId: UInt64) -> Bool {
+        originalSourceURL(assetId: assetId) != nil
+    }
+
+    func publishVideoAsset(assetId: UInt64) throws {
+        let processedDirectoryURL = mediaRootURL
+            .appendingPathComponent("processed", isDirectory: true)
+            .appendingPathComponent(String(assetId), isDirectory: true)
+        let publicAssetDirectoryURL = try preparePublicAssetDirectory(assetId: assetId)
+
+        let adaptiveManifestURL = processedDirectoryURL.appendingPathComponent("adaptive.mpd")
+        let legacyManifestURL = processedDirectoryURL.appendingPathComponent("manifest.mpd")
+        let publicManifestURL = publicAssetDirectoryURL.appendingPathComponent("manifest.mpd")
+        if fileManager.fileExists(atPath: adaptiveManifestURL.path) {
+            try replaceWithLinkOrCopy(sourceURL: adaptiveManifestURL, destinationURL: publicManifestURL)
+        } else if fileManager.fileExists(atPath: legacyManifestURL.path) {
+            try replaceWithLinkOrCopy(sourceURL: legacyManifestURL, destinationURL: publicManifestURL)
+        } else {
+            try removeIfExists(publicManifestURL)
+        }
+
+        let posterURL = processedDirectoryURL.appendingPathComponent("poster.jpg")
+        let publicPosterURL = publicAssetDirectoryURL.appendingPathComponent("poster.jpg")
+        if fileManager.fileExists(atPath: posterURL.path) {
+            try replaceWithLinkOrCopy(sourceURL: posterURL, destinationURL: publicPosterURL)
+        } else {
+            try removeIfExists(publicPosterURL)
+        }
+    }
+
+    private func preparePublicAssetDirectory(assetId: UInt64) throws -> URL {
+        try fileManager.createDirectory(at: publicAssetsRootURL, withIntermediateDirectories: true)
+        let directoryURL = publicAssetsRootURL.appendingPathComponent(String(assetId), isDirectory: true)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL
+    }
+
+    private func originalSourceURL(assetId: UInt64) -> URL? {
+        let directoryURL = mediaRootURL
+            .appendingPathComponent("original", isDirectory: true)
+            .appendingPathComponent(String(assetId), isDirectory: true)
+        guard let entries = try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        return entries
+            .filter { $0.lastPathComponent.hasPrefix("source.") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .first
+    }
+
+    private func replaceWithLinkOrCopy(sourceURL: URL, destinationURL: URL) throws {
+        try removeIfExists(destinationURL)
+        do {
+            try fileManager.createSymbolicLink(at: destinationURL, withDestinationURL: sourceURL)
+        } catch {
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        }
+    }
+
+    private func removeIfExists(_ url: URL) throws {
+        do {
+            try fileManager.removeItem(at: url)
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain, error.code == CocoaError.fileNoSuchFile.rawValue {
+                return
+            }
+            throw error
+        }
+    }
+
+    private func sanitizedExtension(from filename: String, fallback: String) -> String {
+        let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        let allowed = ext.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) }
+        return allowed && !ext.isEmpty ? ext : fallback
+    }
+}
+
 final class GrowJournalMockStore: @unchecked Sendable {
     private struct StoryRecord {
         var detail: StoryDetail
@@ -18,6 +131,13 @@ final class GrowJournalMockStore: @unchecked Sendable {
         var payload: [UInt8]
     }
 
+    private struct VideoProcessingJob {
+        var assetId: UInt64
+        var storyId: UInt64
+        var originalFilename: String
+        var payload: [UInt8]
+    }
+
     private let lock = NSLock()
     private var nextStoryId: UInt64 = 100
     private var nextUpdateId: UInt64 = 1000
@@ -28,9 +148,14 @@ final class GrowJournalMockStore: @unchecked Sendable {
     private var uploads: [UInt64: UploadSession] = [:]
     private var mediaPayloads: [UInt64: [UInt8]] = [:]
     private var watchers: [UInt64: [UUID: NPRPCStreamWriter<StoryStreamServerEvent>]] = [:]
+    private let videoProcessor: GrowJournalVideoProcessor
+    private let publicAssetPublisher: GrowJournalPublicAssetPublisher
 
-    init() {
+    init(videoRootPath: String = "/app/sample_data/grow_journal_media", publicRootPath: String = "/app/runtime/www") {
+        self.videoProcessor = GrowJournalVideoProcessor(rootPath: videoRootPath)
+        self.publicAssetPublisher = GrowJournalPublicAssetPublisher(mediaRootPath: videoRootPath, publicRootPath: publicRootPath)
         seedData()
+        publishSeedAssets()
     }
 
     func listStories(page: UInt32, pageSize: UInt32) -> StoryPage {
@@ -232,7 +357,13 @@ final class GrowJournalMockStore: @unchecked Sendable {
     }
 
     func finishUpload(assetId: UInt64, token: String) throws -> (UploadProgress, UInt64, MediaAsset) {
-        try withLock {
+        struct ImagePublicationJob {
+            let assetId: UInt64
+            let originalFilename: String
+            let payload: [UInt8]
+        }
+
+        let result = try withLock { () throws -> (UploadProgress, UInt64, MediaAsset, ImagePublicationJob?, VideoProcessingJob?) in
             guard let upload = uploads[assetId], upload.token == token, var asset = assets[assetId] else {
                 throw NotFound(msg: "Upload session not found")
             }
@@ -241,24 +372,73 @@ final class GrowJournalMockStore: @unchecked Sendable {
             }
 
             asset.byte_size = upload.bytesReceived
-            asset.status = .Ready
             asset.error_message = nil
             if upload.kind == .Image {
+                asset.status = .Ready
                 asset.image_url = "/mock/journal/assets/\(assetId)/image"
             } else {
-                asset.poster_url = "/mock/journal/assets/\(assetId)/poster"
+                asset.status = .Queued
+                asset.poster_url = nil
                 asset.dash_manifest_url = "/mock/journal/assets/\(assetId)/manifest.mpd"
             }
 
             assets[assetId] = asset
             uploads.removeValue(forKey: assetId)
 
+            let videoJob = upload.kind == .Video
+                ? VideoProcessingJob(assetId: assetId, storyId: upload.storyId, originalFilename: asset.original_filename, payload: upload.payload)
+                : nil
+            let imageJob = upload.kind == .Image
+                ? ImagePublicationJob(assetId: assetId, originalFilename: asset.original_filename, payload: upload.payload)
+                : nil
+
             return (
                 UploadProgress(asset_id: assetId, bytes_received: asset.byte_size),
                 upload.storyId,
-                asset
+                asset,
+                imageJob,
+                videoJob
             )
         }
+
+        if let imageJob = result.3 {
+            do {
+                try publicAssetPublisher.stageAndPublishImageAsset(assetId: imageJob.assetId, originalFilename: imageJob.originalFilename, payload: imageJob.payload)
+                _ = withLock {
+                    mediaPayloads.removeValue(forKey: imageJob.assetId)
+                }
+            } catch {
+                print("[GrowJournal] failed to publish image asset \(imageJob.assetId): \(error)")
+                let failedAsset = withLock { () -> MediaAsset in
+                    var asset = assets[imageJob.assetId] ?? result.2
+                    asset.status = .Failed
+                    asset.error_message = "Image publishing failed: \(error.localizedDescription)"
+                    assets[imageJob.assetId] = asset
+                    return asset
+                }
+                return (result.0, result.1, failedAsset)
+            }
+        }
+
+        if let videoJob = result.4 {
+            do {
+                _ = try videoProcessor.stageOriginal(assetId: videoJob.assetId, originalFilename: videoJob.originalFilename, payload: videoJob.payload)
+                print("[GrowJournal] queued video processing for asset \(videoJob.assetId)")
+                queueVideoProcessing(videoJob)
+            } catch {
+                print("[GrowJournal] failed to stage video asset \(videoJob.assetId): \(error)")
+                let failedAsset = withLock { () -> MediaAsset in
+                    var asset = assets[videoJob.assetId] ?? result.2
+                    asset.status = .Failed
+                    asset.error_message = "Video processing could not start: \(error.localizedDescription)"
+                    assets[videoJob.assetId] = asset
+                    return asset
+                }
+                return (result.0, result.1, failedAsset)
+            }
+        }
+
+        return (result.0, result.1, result.2)
     }
 
     func abortUpload(assetId: UInt64, token: String) -> Bool {
@@ -347,6 +527,28 @@ final class GrowJournalMockStore: @unchecked Sendable {
         }
     }
 
+    func processedManifest(assetId: UInt64) throws -> String? {
+        let originalFilename = try withLock { () throws -> String in
+            guard let asset = assets[assetId] else {
+                throw NotFound(msg: "Asset not found")
+            }
+            return asset.original_filename
+        }
+
+        return try videoProcessor.manifestContents(assetId: assetId, originalFilename: originalFilename)
+    }
+
+    func processedMediaSlice(assetId: UInt64, representation: String, offset: UInt64, length: UInt64) throws -> [UInt8]? {
+        let originalFilename = try withLock { () throws -> String in
+            guard let asset = assets[assetId] else {
+                throw NotFound(msg: "Asset not found")
+            }
+            return asset.original_filename
+        }
+
+        return try videoProcessor.mediaSlice(assetId: assetId, originalFilename: originalFilename, representation: representation, offset: offset, length: length)
+    }
+
     func mediaSlice(assetId: UInt64, offset: UInt64, length: UInt64) -> [UInt8] {
         withLock {
             guard let payload = mediaPayloads[assetId], !payload.isEmpty else {
@@ -367,6 +569,9 @@ final class GrowJournalMockStore: @unchecked Sendable {
     }
 
     private func seedData() {
+        let seededImageURL = publicAssetPublisher.hasImageAsset(assetId: 500)
+            ? "/mock/journal/assets/500/image"
+            : nil
         let imageAsset = MediaAsset(
             id: 500,
             kind: .Image,
@@ -377,7 +582,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
             width: 1536,
             height: 1024,
             duration_ms: nil,
-            image_url: "/mock/journal/assets/500/image",
+            image_url: seededImageURL,
             poster_url: nil,
             dash_manifest_url: nil,
             created_at: isoTimestamp(minutesFromNow: -520),
@@ -385,26 +590,25 @@ final class GrowJournalMockStore: @unchecked Sendable {
         )
 
         let videoAsset = MediaAsset(
-            id: 501,
+            id: 502,
             kind: .Video,
             status: .Ready,
             original_filename: "tomato-root-tour.mp4",
             mime_type: "video/mp4",
-            byte_size: 2_400_000,
+            byte_size: 17_825_792,
             width: 1920,
             height: 1080,
-            duration_ms: 18_000,
+            duration_ms: 264_000,
             image_url: nil,
-            poster_url: "/mock/journal/assets/501/poster",
-            dash_manifest_url: "/mock/journal/assets/501/manifest.mpd",
+            poster_url: "/mock/journal/assets/502/poster.jpg",
+            dash_manifest_url: "/mock/journal/assets/502/manifest.mpd",
             created_at: isoTimestamp(minutesFromNow: -340),
             error_message: nil
         )
 
         assets[500] = imageAsset
-        assets[501] = videoAsset
+        assets[502] = videoAsset
         mediaPayloads[500] = Array(repeating: 0x4A, count: 182_000)
-        mediaPayloads[501] = Array("mock-video-binary-data-".utf8) + Array(repeating: 0x56, count: 64 * 1024)
 
         let basilStory = StoryDetail(
             id: 10,
@@ -412,7 +616,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
             title: "Basil Balcony Week 4",
             crop_name: "Genovese basil",
             description: "Compact balcony basil run with frequent pruning notes, solution checks, and quick phone photos after each trim.",
-            cover_image_url: imageAsset.image_url,
+            cover_image_url: seededImageURL,
             solution_id: 14,
             solution_name: "Herb House Mix 14",
             author_name: "trial grower",
@@ -545,6 +749,22 @@ final class GrowJournalMockStore: @unchecked Sendable {
         nextAssetId = 502
     }
 
+    private func publishSeedAssets() {
+        if publicAssetPublisher.hasImageAsset(assetId: 500) {
+            do {
+                try publicAssetPublisher.publishImageAsset(assetId: 500)
+            } catch {
+                print("[GrowJournal] failed to publish seeded image asset 500: \(error)")
+            }
+        }
+
+        do {
+            try publicAssetPublisher.publishVideoAsset(assetId: 502)
+        } catch {
+            print("[GrowJournal] failed to publish seeded video asset 502: \(error)")
+        }
+    }
+
     private func makePreview(from detail: StoryDetail) -> StoryPreview {
         StoryPreview(
             id: detail.id,
@@ -608,6 +828,83 @@ final class GrowJournalMockStore: @unchecked Sendable {
 
     private func isoTimestamp(minutesFromNow minutes: Int) -> String {
         ISO8601DateFormatter().string(from: Date().addingTimeInterval(TimeInterval(minutes * 60)))
+    }
+
+    private func queueVideoProcessing(_ job: VideoProcessingJob) {
+        DispatchQueue.global(qos: .utility).async { [self] in
+            processVideo(job)
+        }
+    }
+
+    private func processVideo(_ job: VideoProcessingJob) {
+        print("[GrowJournal] processing video asset \(job.assetId) started")
+        let processingAsset = withLock { () -> MediaAsset? in
+            guard var asset = assets[job.assetId] else {
+                return nil
+            }
+            asset.status = .Processing
+            asset.error_message = nil
+            assets[job.assetId] = asset
+            return asset
+        }
+
+        if let processingAsset {
+            broadcast(
+                storyId: job.storyId,
+                event: StoryStreamServerEvent(story_id: job.storyId, update: nil, media: processingAsset, progress: nil)
+            )
+        }
+
+        do {
+            _ = try videoProcessor.process(assetId: job.assetId, originalFilename: job.originalFilename)
+            do {
+                try publicAssetPublisher.publishVideoAsset(assetId: job.assetId)
+            } catch {
+                print("[GrowJournal] failed to publish video asset \(job.assetId): \(error)")
+            }
+            let processedSize = try videoProcessor.outputSize(assetId: job.assetId, originalFilename: job.originalFilename)
+            let hasPoster = videoProcessor.hasPoster(assetId: job.assetId, originalFilename: job.originalFilename)
+
+            let readyAsset = withLock { () -> MediaAsset? in
+                guard var asset = assets[job.assetId] else {
+                    return nil
+                }
+                asset.status = .Ready
+                asset.byte_size = processedSize > 0 ? processedSize : asset.byte_size
+                asset.error_message = nil
+                asset.poster_url = hasPoster ? "/mock/journal/assets/\(job.assetId)/poster.jpg" : nil
+                asset.dash_manifest_url = "/mock/journal/assets/\(job.assetId)/manifest.mpd"
+                assets[job.assetId] = asset
+                mediaPayloads.removeValue(forKey: job.assetId)
+                return asset
+            }
+
+            if let readyAsset {
+                print("[GrowJournal] processing video asset \(job.assetId) finished size=\(readyAsset.byte_size) poster=\(hasPoster)")
+                broadcast(
+                    storyId: job.storyId,
+                    event: StoryStreamServerEvent(story_id: job.storyId, update: nil, media: readyAsset, progress: nil)
+                )
+            }
+        } catch {
+            print("[GrowJournal] processing video asset \(job.assetId) failed: \(error)")
+            let failedAsset = withLock { () -> MediaAsset? in
+                guard var asset = assets[job.assetId] else {
+                    return nil
+                }
+                asset.status = .Failed
+                asset.error_message = "Video processing failed: \(error.localizedDescription)"
+                assets[job.assetId] = asset
+                return asset
+            }
+
+            if let failedAsset {
+                broadcast(
+                    storyId: job.storyId,
+                    event: StoryStreamServerEvent(story_id: job.storyId, update: nil, media: failedAsset, progress: nil)
+                )
+            }
+        }
     }
 
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {
@@ -740,6 +1037,9 @@ final class MediaServiceServantImpl: MediaServiceServant, @unchecked Sendable {
 
     override func getVideoDashManifest(asset_id: UInt64) throws -> String {
         let asset = try store.assetForManifest(assetId: asset_id)
+        if let manifest = try store.processedManifest(assetId: asset_id) {
+            return manifest
+        }
         let durationSeconds = Double(asset.duration_ms ?? 12_000) / 1000.0
         let width = asset.width ?? 1920
         let height = asset.height ?? 1080
@@ -760,8 +1060,10 @@ final class MediaServiceServantImpl: MediaServiceServant, @unchecked Sendable {
         """
     }
 
-    override func getVideoDashSegmentRange(asset_id: UInt64, byte_offset: UInt64, byte_length: UInt64) -> AsyncStream<binary> {
-        let slice = store.mediaSlice(assetId: asset_id, offset: byte_offset, length: byte_length)
+    override func getVideoDashSegmentRange(asset_id: UInt64, byte_offset: UInt64, byte_length: UInt64, representation: String) -> AsyncStream<binary> {
+        let processedSlice = try? store.processedMediaSlice(assetId: asset_id, representation: representation, offset: byte_offset, length: byte_length)
+        let useLegacyFallback = representation.isEmpty || representation == "segment.mp4" || representation == "stream.mp4" || representation == "stream_dashinit.mp4"
+        let slice = processedSlice ?? (useLegacyFallback ? store.mediaSlice(assetId: asset_id, offset: byte_offset, length: byte_length) : [])
         return AsyncStream { continuation in
             guard !slice.isEmpty else {
                 continuation.finish()

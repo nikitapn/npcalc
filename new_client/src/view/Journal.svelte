@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import JournalVideoPlayer from "../lib/JournalVideoPlayer.svelte";
   import { getJournalRpc } from "../lib/journalRpc";
   import {
     MediaKind,
@@ -23,7 +24,7 @@
   type ComposerKind = keyof typeof UpdateKind;
   type VisibilityOption = keyof typeof StoryVisibility;
   type StoryWatchState = "idle" | "connecting" | "live" | "error";
-  type LocalUploadStatus = "PendingUpload" | "Uploading" | "Ready" | "Failed";
+  type LocalUploadStatus = "PendingUpload" | "Uploading" | "Queued" | "Processing" | "Ready" | "Failed";
   type UploadCard = {
     id: string;
     label: string;
@@ -48,6 +49,7 @@
     kind: ComposerKind;
     files: File[];
   };
+  type JournalMediaAsset = StoryUpdate["media"][number];
   type StoryWatchHandle = {
     writer: { close(): void };
     reader: AsyncIterable<StoryStreamServerEvent> & { cancel(): void };
@@ -109,6 +111,7 @@
   let activeStoryRequest = 0;
   let activeWatchGeneration = 0;
   let activeStoryStream: StoryWatchHandle | null = null;
+  let activeVideoMedia = $state<JournalMediaAsset | null>(null);
   let composerFileInput = $state<HTMLInputElement | null>(null);
 
   const storyOverlayTop = $derived.by(() => {
@@ -133,11 +136,13 @@
       .map(({ media, update }) => {
         attachedAssetIds.add(media.id);
         const localUpload = localUploads.find((upload) => upload.assetId === media.id);
-        const status = localUpload ? localUpload.status : mediaStatusName(media.status);
-        const progressPct = localUpload ? localUploadProgressPct(localUpload) : statusProgress(media.status);
-        const detail = localUpload
-          ? `${formatBytes(localUpload.totalBytes)} • ${localUpload.mimeType}`
-          : `${formatBytes(media.byte_size)} • ${relativeTime(media.created_at)}`;
+        const status = mediaStatusName(media.status);
+        const progressPct = statusProgress(media.status);
+        const detail = media.byte_size > 0
+          ? `${formatBytes(media.byte_size)} • ${relativeTime(media.created_at)}`
+          : localUpload
+            ? `${formatBytes(localUpload.totalBytes)} • ${localUpload.mimeType}`
+            : `${formatBytes(media.byte_size)} • ${relativeTime(media.created_at)}`;
         return {
           id: `${update.id}-${media.id}`,
           label: media.original_filename,
@@ -299,13 +304,44 @@
     selectedUpdates = [];
     localUploads = [];
     loadingStory = false;
+    activeVideoMedia = null;
     stopStoryWatch();
   }
 
   function handleWindowKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && activeVideoMedia) {
+      activeVideoMedia = null;
+      return;
+    }
     if (event.key === "Escape" && selectedStory) {
       clearSelectedStory();
     }
+  }
+
+  function portalToBody(node: HTMLElement): { destroy(): void } {
+    if (typeof document === "undefined") {
+      return { destroy() {} };
+    }
+
+    document.body.appendChild(node);
+    return {
+      destroy() {
+        if (node.parentNode === document.body) {
+          document.body.removeChild(node);
+        }
+      },
+    };
+  }
+
+  function canPlayVideo(media: JournalMediaAsset): boolean {
+    return media.kind === MediaKind.Video && media.status === MediaStatus.Ready && Boolean(media.dash_manifest_url);
+  }
+
+  function openVideoPlayer(media: JournalMediaAsset): void {
+    if (!canPlayVideo(media)) {
+      return;
+    }
+    activeVideoMedia = media;
   }
 
   async function submitStory(): Promise<void> {
@@ -566,9 +602,14 @@
     }
 
     if (event.media) {
-      if (event.media.status === MediaStatus.Ready) {
-        updateLocalUpload(event.media.id, { status: "Ready", bytesSent: event.media.byte_size });
+      const localStatus = localUploadStatusFromMediaStatus(event.media.status);
+      if (localStatus) {
+        updateLocalUpload(event.media.id, { status: localStatus, bytesSent: event.media.byte_size });
+        if (localStatus === "Ready" || localStatus === "Failed") {
+          clearLocalUpload(event.media.id);
+        }
       }
+      applyMediaAsset(storyId, event.media);
       if (selectedStory?.id === storyId && !selectedStory.cover_image_url && event.media.kind === MediaKind.Image) {
         selectedStory = { ...selectedStory, cover_image_url: event.media.image_url };
       }
@@ -602,6 +643,23 @@
     touchStoryPreview(update.story_id, update.created_at, coverImage);
   }
 
+  function applyMediaAsset(storyId: bigint, media: StoryUpdate["media"][number]): void {
+    if (selectedStory?.id !== storyId) {
+      return;
+    }
+
+    selectedUpdates = selectedUpdates.map((update) => {
+      const mediaIndex = update.media.findIndex((entry) => entry.id === media.id);
+      if (mediaIndex === -1) {
+        return update;
+      }
+
+      const nextMedia = [...update.media];
+      nextMedia[mediaIndex] = media;
+      return { ...update, media: nextMedia };
+    });
+  }
+
   function registerLocalUpload(target: UploadTarget, file: File, mimeType: string): void {
     const startedAt = new Date().toISOString();
     const upload: LocalUploadState = {
@@ -629,6 +687,23 @@
 
   function clearLocalUpload(assetId: bigint): void {
     localUploads = localUploads.filter((upload) => upload.assetId !== assetId);
+  }
+
+  function localUploadStatusFromMediaStatus(status: MediaStatus): LocalUploadStatus | null {
+    switch (status) {
+      case MediaStatus.Uploading:
+        return "Uploading";
+      case MediaStatus.Queued:
+        return "Queued";
+      case MediaStatus.Processing:
+        return "Processing";
+      case MediaStatus.Ready:
+        return "Ready";
+      case MediaStatus.Failed:
+        return "Failed";
+      default:
+        return "PendingUpload";
+    }
   }
 
   function localUploadProgressPct(upload: LocalUploadState): number {
@@ -861,6 +936,16 @@
     }
     const idx = Number(id % BigInt(stageGradients.length));
     return stageGradients[idx];
+  }
+
+  function mediaPreviewUrl(media: JournalMediaAsset): string | null {
+    if (media.kind === MediaKind.Video) {
+      return media.poster_url ?? null;
+    }
+    if (media.kind === MediaKind.Image) {
+      return media.image_url ?? null;
+    }
+    return null;
   }
 
   function mediaLabel(filename: string, kind: MediaKind): string {
@@ -1156,7 +1241,14 @@
                 <div class="space-y-3">
                   <div class="rounded-3xl border border-white/15 bg-black/34 p-4 text-sm text-white/85">
                     <p class="text-xs uppercase tracking-[0.22em] text-white/65">Cover</p>
-                    <p class="mt-2 max-w-52 leading-6">{selectedStory.cover_image_url ?? "No cover image yet. Attach one through the upload service and it will surface here."}</p>
+                    {#if selectedStory.cover_image_url}
+                      <div class="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                        <img src={selectedStory.cover_image_url} alt={`${selectedStory.title} cover`} class="aspect-video w-full object-cover" />
+                      </div>
+                      <p class="mt-3 max-w-52 text-xs leading-5 text-white/68">The story cover updates from attached image assets and video posters.</p>
+                    {:else}
+                      <p class="mt-2 max-w-52 leading-6">No cover image yet. Attach one through the upload service and it will surface here.</p>
+                    {/if}
                   </div>
                   <div class="rounded-3xl border border-white/15 bg-black/34 p-4 text-sm text-white/85">
                     <p class="text-xs uppercase tracking-[0.22em] text-white/65">Live watch</p>
@@ -1228,10 +1320,27 @@
                   <div class="mt-5 grid gap-3 md:grid-cols-2">
                     {#each update.media as media}
                       <div class="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/20">
-                        <div class="h-36 px-4 py-4" style={`background:${mediaGradient(media.kind, media.id)}`}>
-                          <div class="flex items-start justify-between gap-3">
-                            <span class="rounded-full bg-black/28 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{mediaKindName(media.kind)}</span>
-                            <span class={`text-xs font-semibold uppercase tracking-[0.18em] ${uploadTone(mediaStatusName(media.status))}`}>{mediaStatusName(media.status)}</span>
+                        <div class="relative h-36 overflow-hidden px-4 py-4" style={`background:${mediaGradient(media.kind, media.id)}`}>
+                          {#if mediaPreviewUrl(media)}
+                            <img src={mediaPreviewUrl(media) ?? undefined} alt={mediaLabel(media.original_filename, media.kind)} class="absolute inset-0 h-full w-full object-cover opacity-75" />
+                            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,9,18,0.16),rgba(3,9,18,0.72))]"></div>
+                          {/if}
+                          <div class="flex h-full flex-col justify-between gap-3">
+                            <div class="flex items-start justify-between gap-3">
+                              <span class="rounded-full bg-black/28 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/85">{mediaKindName(media.kind)}</span>
+                              <span class={`text-xs font-semibold uppercase tracking-[0.18em] ${uploadTone(mediaStatusName(media.status))}`}>{mediaStatusName(media.status)}</span>
+                            </div>
+
+                            {#if canPlayVideo(media)}
+                              <div class="flex items-end justify-between gap-3">
+                                <p class="max-w-48 text-sm font-medium text-white/82">Adaptive DASH is ready for playback.</p>
+                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openVideoPlayer(media)}>
+                                  Play video
+                                </button>
+                              </div>
+                            {:else if media.kind === MediaKind.Video}
+                              <p class="max-w-52 text-sm text-white/78">Video processing will unlock adaptive playback here as soon as the stream is ready.</p>
+                            {/if}
                           </div>
                         </div>
                         <div class="space-y-2 px-4 py-4 text-sm text-ocean-100/80">
@@ -1342,5 +1451,28 @@
         </div>
       </div>
     </div>
+    {/if}
+
+    {#if activeVideoMedia}
+      <div use:portalToBody class="fixed inset-0 z-120 overflow-y-auto bg-black/70 px-4 py-4 backdrop-blur-sm sm:py-8" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) activeVideoMedia = null; }}>
+        <div class="flex min-h-full items-start justify-center sm:items-center">
+        <div class="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-4xl border border-white/10 bg-ocean-950/96 shadow-[0_36px_120px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-4rem)]">
+          <div class="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Video playback</p>
+              <h4 class="mt-2 text-xl font-semibold text-white">{activeVideoMedia.original_filename}</h4>
+              <p class="mt-1 text-sm text-ocean-100/68">{formatBytes(activeVideoMedia.byte_size)} • {activeVideoMedia.mime_type}{#if activeVideoMedia.duration_ms} • {Math.round(Number(activeVideoMedia.duration_ms) / 1000)}s{/if}</p>
+            </div>
+            <button type="button" class="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12" onclick={() => activeVideoMedia = null}>
+              Close
+            </button>
+          </div>
+
+          <div class="min-h-0 overflow-y-auto p-4 sm:p-6">
+            <JournalVideoPlayer assetId={activeVideoMedia.id} title={activeVideoMedia.original_filename} posterUrl={activeVideoMedia.poster_url} />
+          </div>
+        </div>
+        </div>
+      </div>
     {/if}
 </section>

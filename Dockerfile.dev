@@ -37,6 +37,8 @@ FROM nprpc-dev:latest AS nscalc-builder
 
 USER root
 
+RUN apt-get update && apt-get install -y ffmpeg gpac && rm -rf /var/lib/apt/lists/*
+
 # Install GRDB's SQLite dependency with snapshot support, since the default Ubuntu package doesn't have it.
 COPY --from=sqlite3-builder /usr/lib/x86_64-linux-gnu/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=sqlite3-builder /usr/bin/sqlite3 /usr/bin/sqlite3

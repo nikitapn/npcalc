@@ -4,6 +4,8 @@ FROM cpp-dev-env:boost-1-89
 # Update and install dependencies
 RUN apt-get update && apt-get install -y \
     cmake \
+    ffmpeg \
+    gpac \
     sqlite3 \
     libsqlite3-dev \
     sudo \

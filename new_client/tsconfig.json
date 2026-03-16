@@ -20,8 +20,9 @@
       "@/*": ["./src/*"],
       "@rpc/*": ["../client/src/rpc/*"],
       "nprpc": ["../external/nprpc/nprpc_js/dist/index.d.ts"]
-    }
+    },
+    "typeRoots": ["./src"]
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.js", "src/**/*.svelte"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

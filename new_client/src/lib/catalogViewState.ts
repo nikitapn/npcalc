@@ -44,6 +44,16 @@ export function setSolutionsViewState(nextState: SolutionsViewState): void {
   };
 }
 
+export function resetSolutionsViewState(): void {
+  solutionsViewState = {
+    ready: false,
+    search: "",
+    author: "",
+    items: [],
+    nextCursor: null,
+  };
+}
+
 export function getFertilizersViewState(): FertilizersViewState {
   return {
     ...fertilizersViewState,
@@ -55,5 +65,14 @@ export function setFertilizersViewState(nextState: FertilizersViewState): void {
   fertilizersViewState = {
     ...nextState,
     items: [...nextState.items],
+  };
+}
+
+export function resetFertilizersViewState(): void {
+  fertilizersViewState = {
+    ready: false,
+    search: "",
+    items: [],
+    nextCursor: null,
   };
 }

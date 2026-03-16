@@ -204,5 +204,5 @@ interface StoryStreamService {
 
 interface MediaService {
   string GetVideoDashManifest(asset_id: u64) raises(NotFound, ProcessingFailed);
-  server_stream<binary> GetVideoDashSegmentRange(asset_id: u64, byte_offset: u64, byte_length: u64) raises(NotFound, ProcessingFailed);
+  server_stream<binary> GetVideoDashSegmentRange(asset_id: u64, byte_offset: u64, byte_length: u64, representation: string) raises(NotFound, ProcessingFailed);
 }
