@@ -233,3 +233,8 @@ interface Calculator {
   void GetGuestCalculations(calculations: out direct vector<Calculation>);
   void SendFootstep(footstep: in Footstep);
 }
+
+interface SiteEventService {
+  string GetSiteEventConfig();
+  string SetSiteEventConfig(session_id: in string, config_json: in string) raises(AuthorizationFailed, PermissionViolation, InvalidArgument);
+}

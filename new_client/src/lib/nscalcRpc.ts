@@ -5,6 +5,7 @@ export type NscalcRpcContext = {
   rpc: NPRPC.Rpc;
   calculator: nscalc.Calculator;
   authorizator: nscalc.Authorizator;
+  siteEvents: nscalc.SiteEventService;
 };
 
 let initPromise: Promise<NscalcRpcContext> | null = null;
@@ -25,6 +26,7 @@ export async function getNscalcRpc(): Promise<NscalcRpcContext> {
         rpc,
         calculator: NPRPC.narrow(requireHostObject(rpc, "calculator"), nscalc.Calculator),
         authorizator: NPRPC.narrow(requireHostObject(rpc, "authorizator"), nscalc.Authorizator),
+        siteEvents: NPRPC.narrow(requireHostObject(rpc, "site_events"), nscalc.SiteEventService),
       };
     })().catch((error) => {
       initPromise = null;

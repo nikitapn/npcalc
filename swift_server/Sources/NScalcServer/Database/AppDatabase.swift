@@ -219,6 +219,17 @@ final class AppDatabase: Sendable {
               """)
             }
 
+        migrator.registerMigration("v5_site_events") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS SiteEventState (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  configJSON TEXT NOT NULL,
+                  updatedAt TEXT NOT NULL,
+                  updatedBy TEXT
+                );
+            """)
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

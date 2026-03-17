@@ -111,7 +111,7 @@ do {
 
     print("NScalc Swift server listening on port \(httpPort)")
 
-    let poa  = try rpc.createPoa(maxObjects: 10, lifetime: .Persistent, idPolicy: .userSupplied)
+    let poa  = try rpc.createPoa(maxObjects: 12, lifetime: .Persistent, idPolicy: .userSupplied)
     let calc = CalculatorServantImpl(db: appDB)
     let calcOid = try poa.activateObjectWithId(objectId: UInt64(0), servant: calc, flags: .allowAll)
 
@@ -137,6 +137,9 @@ do {
     let media = MediaServiceServantImpl(store: journalStore)
     let mediaOid = try poa.activateObjectWithId(objectId: UInt64(9), servant: media, flags: .allowAll)
 
+    let siteEvents = SiteEventServiceServantImpl(db: appDB)
+    let siteEventsOid = try poa.activateObjectWithId(objectId: UInt64(10), servant: siteEvents, flags: .allowAll)
+
     rpc.clearHostJson()
     try rpc.addToHostJson(name: "calculator", objectId: calcOid)
     try rpc.addToHostJson(name: "authorizator", objectId: authOid)
@@ -146,6 +149,7 @@ do {
     try rpc.addToHostJson(name: "journal_uploads", objectId: uploadsOid)
     try rpc.addToHostJson(name: "journal_stream", objectId: storyStreamOid)
     try rpc.addToHostJson(name: "journal_media", objectId: mediaOid)
+    try rpc.addToHostJson(name: "site_events", objectId: siteEventsOid)
     let hostJsonPath = try rpc.produceHostJson(outputPath: hostJsonOutputPath)
 
     if false {
@@ -156,6 +160,7 @@ do {
         print("Activated UploadService with oid: \(uploadsOid)")
         print("Activated StoryStreamService with oid: \(storyStreamOid)")
         print("Activated MediaService with oid: \(mediaOid)")
+        print("Activated SiteEventService with oid: \(siteEventsOid)")
         print("host.json: \(hostJsonPath)")
     }
     // Set up signal handling for graceful shutdown

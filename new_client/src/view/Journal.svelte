@@ -60,6 +60,12 @@
     files: File[];
   };
   type JournalMediaAsset = StoryUpdate["media"][number];
+  type ActiveImageViewer = {
+    url: string;
+    title: string;
+    detail: string;
+    alt: string;
+  };
   type StoryWatchHandle = {
     writer: { close(): void };
     reader: AsyncIterable<StoryStreamServerEvent> & { cancel(): void };
@@ -122,7 +128,10 @@
   let activeStoryRequest = 0;
   let activeWatchGeneration = 0;
   let activeStoryStream: StoryWatchHandle | null = null;
+  let activeImageViewer = $state<ActiveImageViewer | null>(null);
   let activeVideoMedia = $state<JournalMediaAsset | null>(null);
+  let composerPanel = $state<HTMLElement | null>(null);
+  let composerBodyInput = $state<HTMLTextAreaElement | null>(null);
   let composerFileInput = $state<HTMLInputElement | null>(null);
   const uploadRetryLimit = 6;
 
@@ -316,11 +325,16 @@
     selectedUpdates = [];
     localUploads = [];
     loadingStory = false;
+    activeImageViewer = null;
     activeVideoMedia = null;
     stopStoryWatch();
   }
 
   function handleWindowKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && activeImageViewer) {
+      activeImageViewer = null;
+      return;
+    }
     if (event.key === "Escape" && activeVideoMedia) {
       activeVideoMedia = null;
       return;
@@ -354,6 +368,36 @@
       return;
     }
     activeVideoMedia = media;
+  }
+
+  function openImageViewer(image: ActiveImageViewer): void {
+    activeImageViewer = image;
+  }
+
+  function openCoverImage(story: StoryDetail): void {
+    if (!story.cover_image_url) {
+      return;
+    }
+
+    openImageViewer({
+      url: story.cover_image_url,
+      title: `${story.title} cover`,
+      detail: `${story.crop_name} • ${story.author_name}`,
+      alt: `${story.title} cover`,
+    });
+  }
+
+  function openMediaImage(media: JournalMediaAsset): void {
+    if (media.kind !== MediaKind.Image || !media.image_url) {
+      return;
+    }
+
+    openImageViewer({
+      url: media.image_url,
+      title: media.original_filename,
+      detail: `${formatBytes(media.byte_size)} • ${media.mime_type}`,
+      alt: mediaLabel(media.original_filename, media.kind),
+    });
   }
 
   async function submitStory(): Promise<void> {
@@ -586,6 +630,23 @@
     } finally {
       deletingStory = false;
     }
+  }
+
+  function prepareFollowUp(update: StoryUpdate): void {
+    const updateTitle = update.title?.trim() || "latest update";
+
+    composerKind = "Note";
+    composerTitle = `Follow-up: ${updateTitle}`;
+    composerBody = `Follow-up to: ${updateTitle}\n\n`;
+    loadingError = null;
+    lastActionMessage = `Drafted a follow-up note for ${updateTitle}.`;
+
+    composerPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    requestAnimationFrame(() => {
+      composerBodyInput?.focus();
+      const length = composerBodyInput?.value.length ?? 0;
+      composerBodyInput?.setSelectionRange(length, length);
+    });
   }
 
   function handleComposerFiles(event: Event): void {
@@ -1326,7 +1387,14 @@
                     <p class="text-xs uppercase tracking-[0.22em] text-white/65">Cover</p>
                     {#if selectedStory.cover_image_url}
                       <div class="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-                        <img src={selectedStory.cover_image_url} alt={`${selectedStory.title} cover`} class="aspect-video w-full object-cover" />
+                        <button type="button" class="group relative block w-full text-left" onclick={() => { const story = selectedStory; if (story) openCoverImage(story); }}>
+                          <img src={selectedStory.cover_image_url} alt={`${selectedStory.title} cover`} class="aspect-video w-full object-cover transition duration-200 group-hover:scale-[1.02]" />
+                          <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(3,9,18,0.08),rgba(3,9,18,0.52))] opacity-0 transition group-hover:opacity-100"></div>
+                          <div class="pointer-events-none absolute inset-x-3 bottom-3 flex items-center justify-between gap-3 rounded-2xl border border-white/12 bg-black/35 px-3 py-2 opacity-0 backdrop-blur-sm transition group-hover:opacity-100">
+                            <span class="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/82">Open full screen</span>
+                            <span class="text-[11px] uppercase tracking-[0.18em] text-ocean-200/72">Image</span>
+                          </div>
+                        </button>
                       </div>
                       <p class="mt-3 max-w-52 text-xs leading-5 text-white/68">The story cover updates from attached image assets and video posters.</p>
                     {:else}
@@ -1385,7 +1453,7 @@
                     <h4 class="mt-3 text-xl font-semibold text-white">{update.title ?? "Untitled update"}</h4>
                     <p class="mt-1 text-sm uppercase tracking-[0.18em] text-ocean-200/60">{update.author_name}</p>
                   </div>
-                  <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={() => { composerTitle = update.title ?? composerTitle; composerBody = `Follow-up to: ${update.title ?? 'latest update'}\n\n`; }}>Reply later</button>
+                  <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={() => prepareFollowUp(update)}>Follow up</button>
                 </div>
 
                 {#if update.body.trim().length > 0}
@@ -1412,8 +1480,22 @@
                       <div class="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/20">
                         <div class="relative h-36 overflow-hidden px-4 py-4" style={`background:${mediaGradient(media.kind, media.id)}`}>
                           {#if mediaPreviewUrl(media)}
-                            <img src={mediaPreviewUrl(media) ?? undefined} alt={mediaLabel(media.original_filename, media.kind)} class="absolute inset-0 h-full w-full object-cover opacity-75" />
-                            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,9,18,0.16),rgba(3,9,18,0.72))]"></div>
+                            <button
+                              type="button"
+                              class={`absolute inset-0 block h-full w-full ${media.kind === MediaKind.Image && media.image_url ? 'cursor-zoom-in' : canPlayVideo(media) ? 'cursor-pointer' : 'cursor-default'}`}
+                              onclick={() => {
+                                if (media.kind === MediaKind.Image) {
+                                  openMediaImage(media);
+                                  return;
+                                }
+                                openVideoPlayer(media);
+                              }}
+                              disabled={media.kind === MediaKind.Image ? !media.image_url : !canPlayVideo(media)}
+                              aria-label={media.kind === MediaKind.Image ? `Open ${media.original_filename} full screen` : `Play ${media.original_filename}`}
+                            >
+                              <img src={mediaPreviewUrl(media) ?? undefined} alt={mediaLabel(media.original_filename, media.kind)} class="absolute inset-0 h-full w-full object-cover opacity-75 transition duration-200 hover:scale-[1.02]" />
+                            </button>
+                            <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(3,9,18,0.16),rgba(3,9,18,0.72))]"></div>
                           {/if}
                           <div class="flex h-full flex-col justify-between gap-3">
                             <div class="flex items-start justify-between gap-3">
@@ -1421,7 +1503,14 @@
                               <span class={`text-xs font-semibold uppercase tracking-[0.18em] ${uploadTone(mediaStatusName(media.status))}`}>{mediaStatusName(media.status)}</span>
                             </div>
 
-                            {#if canPlayVideo(media)}
+                            {#if media.kind === MediaKind.Image && media.image_url}
+                              <div class="flex items-end justify-between gap-3">
+                                <p class="max-w-48 text-sm font-medium text-white/82">Tap the preview to inspect the full image without leaving the story timeline.</p>
+                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openMediaImage(media)}>
+                                  Open image
+                                </button>
+                              </div>
+                            {:else if canPlayVideo(media)}
                               <div class="flex items-end justify-between gap-3">
                                 <p class="max-w-48 text-sm font-medium text-white/82">Adaptive DASH is ready for playback.</p>
                                 <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openVideoPlayer(media)}>
@@ -1478,7 +1567,7 @@
                 {/if}
               </section>
 
-              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+              <section bind:this={composerPanel} class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Quick compose</p>
                 <p class="mt-3 text-sm leading-6 text-ocean-100/72">Posting creates the update first, then image and video files stream in chunks through the upload service and attach to that update. Text is optional when media is attached.</p>
                 <div class="mt-4 space-y-3">
@@ -1505,7 +1594,7 @@
                 </label>
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Body
-                  <textarea bind:value={composerBody} class="min-h-32 rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300" placeholder="Optional if you are only attaching media."></textarea>
+                  <textarea bind:this={composerBodyInput} bind:value={composerBody} class="min-h-32 rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300" placeholder="Optional if you are only attaching media."></textarea>
                 </label>
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Attach media
@@ -1562,6 +1651,29 @@
             <JournalVideoPlayer assetId={activeVideoMedia.id} title={activeVideoMedia.original_filename} posterUrl={activeVideoMedia.poster_url} />
           </div>
         </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if activeImageViewer}
+      <div use:portalToBody class="fixed inset-0 z-120 overflow-y-auto bg-black/78 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) activeImageViewer = null; }}>
+        <div class="flex min-h-full items-center justify-center">
+          <div class="flex w-full max-w-6xl flex-col overflow-hidden rounded-4xl border border-white/10 bg-ocean-950/96 shadow-[0_36px_120px_rgba(0,0,0,0.58)]">
+            <div class="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Image viewer</p>
+                <h4 class="mt-2 text-xl font-semibold text-white">{activeImageViewer.title}</h4>
+                <p class="mt-1 text-sm text-ocean-100/68">{activeImageViewer.detail}</p>
+              </div>
+              <button type="button" class="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12" onclick={() => activeImageViewer = null}>
+                Close
+              </button>
+            </div>
+
+            <div class="flex max-h-[calc(100vh-9rem)] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(60,168,244,0.12),transparent_36%),linear-gradient(180deg,rgba(4,10,20,0.88),rgba(4,10,20,0.96))] p-3 sm:p-6">
+              <img src={activeImageViewer.url} alt={activeImageViewer.alt} class="max-h-[calc(100vh-12rem)] w-auto max-w-full rounded-3xl object-contain shadow-[0_28px_90px_rgba(0,0,0,0.45)]" />
+            </div>
+          </div>
         </div>
       </div>
     {/if}
