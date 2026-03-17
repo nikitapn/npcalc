@@ -5,6 +5,7 @@ export type SolutionCardData = {
   id: number;
   name: string;
   author: string;
+  rawElements: Record<ElementKey, number>;
   elements: Record<string, number>;
   ratios: {
     NH4Percent: string;
@@ -22,10 +23,12 @@ export type FertilizerCardData = {
   name: string;
   author: string;
   cost: string;
+  formula: string;
   elements: Record<string, string>;
 };
 
 const solutionElementLabels: ElementKey[] = ["NO3", "NH4", "P", "K", "Ca", "Mg", "S", "Cl", "Fe", "Zn", "B", "Mn", "Cu", "Mo"];
+const fertilizerElementLabels: ElementKey[] = ["NO3", "NH4", "P", "K", "Ca", "Mg", "S", "Cl", "Fe", "Zn", "B", "Mn", "Cu", "Mo"];
 
 export function solutionCardFromRpc(solution: Solution): SolutionCardData {
   const solutionElements = solutionElementsFromRecord({
@@ -51,6 +54,7 @@ export function solutionCardFromRpc(solution: Solution): SolutionCardData {
     id: solution.id,
     name: solution.name,
     author: solution.userName,
+    rawElements: solutionElements,
     elements: Object.fromEntries(
       solutionElementLabels.map((label) => [label, formatSolutionElement(label, solutionElements[label] ?? 0)]),
     ) as Record<string, number>,
@@ -67,21 +71,34 @@ export function solutionCardFromRpc(solution: Solution): SolutionCardData {
 }
 
 export function fertilizerCardFromRpc(fertilizer: Fertilizer): FertilizerCardData {
-  const totalNitrogen = (fertilizer.elements[0] ?? 0) + (fertilizer.elements[1] ?? 0);
+  const fertilizerElements = {
+    NO3: fertilizer.elements[0] ?? 0,
+    NH4: fertilizer.elements[1] ?? 0,
+    P: fertilizer.elements[2] ?? 0,
+    K: fertilizer.elements[3] ?? 0,
+    Ca: fertilizer.elements[4] ?? 0,
+    Mg: fertilizer.elements[5] ?? 0,
+    S: fertilizer.elements[6] ?? 0,
+    Cl: fertilizer.elements[7] ?? 0,
+    Fe: fertilizer.elements[8] ?? 0,
+    Zn: fertilizer.elements[9] ?? 0,
+    B: fertilizer.elements[10] ?? 0,
+    Mn: fertilizer.elements[11] ?? 0,
+    Cu: fertilizer.elements[12] ?? 0,
+    Mo: fertilizer.elements[13] ?? 0,
+  } satisfies Record<ElementKey, number>;
 
   return {
     id: fertilizer.id,
     name: fertilizer.name,
     author: fertilizer.userName,
     cost: fertilizer.cost.toFixed(2),
-    elements: {
-      N: totalNitrogen.toFixed(2),
-      P: (fertilizer.elements[2] ?? 0).toFixed(2),
-      K: (fertilizer.elements[3] ?? 0).toFixed(2),
-      Ca: (fertilizer.elements[4] ?? 0).toFixed(2),
-      Mg: (fertilizer.elements[5] ?? 0).toFixed(2),
-      S: (fertilizer.elements[6] ?? 0).toFixed(2),
-    },
+    formula: fertilizer.formula,
+    elements: Object.fromEntries(
+      fertilizerElementLabels
+        .filter((label) => Number(fertilizerElements[label].toFixed(2)) !== 0)
+        .map((label) => [label, fertilizerElements[label].toFixed(2)]),
+    ) as Record<string, string>,
   };
 }
 

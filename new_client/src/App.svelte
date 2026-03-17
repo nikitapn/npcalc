@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as NPRPC from "nprpc";
   import { onMount } from "svelte";
   import Calculator from "./view/Calculator.svelte";
   import Journal from "./view/Journal.svelte";
@@ -23,6 +24,7 @@
     name: string;
     sessionId: string;
     isAdmin: boolean;
+    registeredUser: nscalc.RegisteredUser;
   } | null;
 
   type View = "journal" | "calculator" | "solutions" | "fertilizers" | "chat" | "about";
@@ -101,6 +103,7 @@
         name: userData.name,
         sessionId: userData.sessionId,
         isAdmin: userData.isAdmin,
+        registeredUser: NPRPC.narrow(userData.db, nscalc.RegisteredUser),
       };
       setCookie("sid", userData.sessionId);
     } catch {
@@ -126,6 +129,7 @@
         name: userData.name,
         sessionId: userData.sessionId,
         isAdmin: userData.isAdmin,
+        registeredUser: NPRPC.narrow(userData.db, nscalc.RegisteredUser),
       };
       setCookie("sid", userData.sessionId);
       password = "";
@@ -321,7 +325,7 @@
   <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(125,198,255,0.12),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(201,138,53,0.12),transparent_18%)]"></div>
 
   <header class="sticky top-0 z-20 border-b border-white/10 bg-ocean-900/80 backdrop-blur-xl">
-    <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 2xl:max-w-[96rem]">
       <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between 2xl:gap-6">
         <div class="max-w-2xl">
           <p class="text-xs font-semibold uppercase tracking-[0.3em] text-ocean-300">NScalc</p>
@@ -409,17 +413,17 @@
     </div>
   </header>
 
-  <main class="relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <section class={`grid gap-4 ${currentView === "calculator" && !authState?.isAdmin ? 'grid-cols-1' : '2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start'}`}>
+  <main class="relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 2xl:max-w-[96rem]">
+    <section class={`grid gap-4 ${currentView === "calculator" ? 'grid-cols-1' : '2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start'}`}>
       <div class={`panel-surface relative rounded-4xl p-4 sm:p-6 ${currentView === "journal" ? 'z-30' : ''}`}>
         {#if currentView === "journal"}
           <Journal moderatorSessionId={authState?.sessionId ?? null} canModerate={authState?.isAdmin ?? false} moderatorName={authState?.name ?? null} />
         {:else if currentView === "calculator"}
           <Calculator />
         {:else if currentView === "solutions"}
-          <Solutions />
+          <Solutions currentUserName={authState?.name ?? null} currentUser={authState?.registeredUser ?? null} />
         {:else if currentView === "fertilizers"}
-          <Fertilizers />
+          <Fertilizers currentUserName={authState?.name ?? null} currentUser={authState?.registeredUser ?? null} />
         {:else if currentView === "chat"}
           <div class="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
             <div>

@@ -464,7 +464,7 @@
     </div>
   </div>
 
-  <div class="grid gap-4 2xl:grid-cols-[22rem_minmax(0,1fr)]">
+  <div class="grid gap-4 2xl:grid-cols-[minmax(19rem,24rem)_minmax(0,1fr)] 2xl:items-start">
     <aside class="space-y-4">
       <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
         <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Target recipe</p>
@@ -559,7 +559,7 @@
       </section>
     </aside>
 
-    <div class="space-y-4">
+    <div class="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(24rem,1fr)] 2xl:items-start">
       <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -585,8 +585,8 @@
         {:else}
           <div class="mt-4 space-y-3">
             {#each selectedFertilizerRows as row}
-              <div class="grid gap-3 rounded-[1.4rem] border border-white/10 bg-black/18 p-4 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1.2fr)_8rem_9rem_8rem] 2xl:items-end">
-                <div class="min-w-0 sm:col-span-2 2xl:col-span-1">
+              <div class="grid gap-3 rounded-[1.4rem] border border-white/10 bg-black/18 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_8rem] xl:items-end">
+                <div class="min-w-0 sm:col-span-2 xl:col-span-1">
                   <p class="wrap-break-word font-semibold text-white">{row.fertilizer.name}</p>
                   <p class="mt-1 wrap-break-word text-xs uppercase tracking-[0.16em] text-ocean-200/60">{row.fertilizer.userName} • {calculatorMode === "auto" ? "engine" : "manual"}</p>
                 </div>
@@ -608,7 +608,7 @@
         {/if}
       </section>
 
-      <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6">
+      <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6 2xl:sticky 2xl:top-6">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Target vs mix</p>
@@ -617,7 +617,7 @@
           <div class="rounded-3xl bg-black/20 px-4 py-3 text-sm text-ocean-100/80">Target EC {targetEc.ec.toFixed(2)} • Mix EC {mixEc.ec.toFixed(2)} • N:K {formatRatio(mixRatio.nk)}</div>
         </div>
 
-        <div class="mt-4 overflow-x-auto">
+        <div class="mt-4 overflow-auto 2xl:max-h-[52vh]">
           <table class="min-w-full border-separate border-spacing-y-2 text-sm">
             <thead>
               <tr class="text-left text-xs uppercase tracking-[0.18em] text-ocean-200/60">
