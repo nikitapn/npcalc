@@ -4,6 +4,7 @@ import * as nscalc from "@rpc/nscalc";
 export type NscalcRpcContext = {
   rpc: NPRPC.Rpc;
   calculator: nscalc.Calculator;
+  authorizator: nscalc.Authorizator;
 };
 
 let initPromise: Promise<NscalcRpcContext> | null = null;
@@ -23,6 +24,7 @@ export async function getNscalcRpc(): Promise<NscalcRpcContext> {
       return {
         rpc,
         calculator: NPRPC.narrow(requireHostObject(rpc, "calculator"), nscalc.Calculator),
+        authorizator: NPRPC.narrow(requireHostObject(rpc, "authorizator"), nscalc.Authorizator),
       };
     })().catch((error) => {
       initPromise = null;

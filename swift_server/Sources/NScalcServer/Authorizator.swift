@@ -52,7 +52,7 @@ final class AuthorizatorImpl: AuthorizatorServant, @unchecked Sendable {
 		}
 
 		let sessionId = try sessionService.createSession(userId: userId)
-		return UserData(name: user.name, sessionId: sessionId, db: userObject)
+		return UserData(name: user.name, isAdmin: user.isAdmin, sessionId: sessionId, db: userObject)
 	}
 
 	private func loginByEmail(_ email: String, password: String?) throws -> UserData {

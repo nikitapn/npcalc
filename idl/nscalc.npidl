@@ -111,6 +111,7 @@ exception InvalidArgument {
 
 message UserData {
   name: string;
+  isAdmin: boolean;
   sessionId: string;
   db: object; // RegisteredUser
 }

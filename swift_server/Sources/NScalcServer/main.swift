@@ -124,7 +124,7 @@ do {
     let realtime = RealtimeServantImpl()
     let realtimeOid = try poa.activateObjectWithId(objectId: UInt64(5), servant: realtime, flags: .allowAll)
 
-    let journalStore = GrowJournalMockStore(publicRootPath: wwwRoot)
+    let journalStore = GrowJournalStore(db: appDB, publicRootPath: wwwRoot)
     let journal = JournalServiceServantImpl(store: journalStore)
     let journalOid = try poa.activateObjectWithId(objectId: UInt64(6), servant: journal, flags: .allowAll)
 

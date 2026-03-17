@@ -179,6 +179,10 @@ exception ProcessingFailed {
   msg: string;
 }
 
+exception PermissionDenied {
+  msg: string;
+}
+
 interface JournalService {
   StoryPage ListStories(page: u32, page_size: u32);
   StoryDetail GetStory(slug: string) raises(NotFound);
@@ -186,6 +190,7 @@ interface JournalService {
 
   StoryDetail CreateStory(req: in CreateStoryRequest);
   StoryUpdate CreateUpdate(req: in CreateUpdateRequest) raises(NotFound);
+  boolean DeleteStory(session_id: in string, story_id: u64) raises(NotFound, PermissionDenied);
 
   UploadTarget CreateImageUpload(story_id: u64, update_id: u64, filename: string, mime_type: string) raises(NotFound, UploadRejected);
   UploadTarget CreateVideoUpload(story_id: u64, update_id: u64, filename: string, mime_type: string) raises(NotFound, UploadRejected);

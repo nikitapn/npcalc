@@ -218,6 +218,7 @@ The project includes Docker support for containerized deployment:
 
 1. **Certificate Warnings**: Install self-signed certificate in browser (see [Windows setup guide](docs/WINDOWS_CERTIFICATE_SETUP.md))
 2. **Build Failures**: Ensure all dependencies are installed and C++20 support is available
+3. **Local login stopped working**: Run `./reset-dev-auth.sh` to restore the seeded dev passwords in `sample_data/nscalc.db`.
 3. **Proxy Connection Issues**: Check firewall settings and ensure server is running with SSL enabled
 
 ### Debug Mode

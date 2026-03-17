@@ -1,6 +1,7 @@
 import Foundation
 import NPRPC
 import NScalc
+import GRDB
 
 private final class GrowJournalPublicAssetPublisher {
     private let fileManager = FileManager.default
@@ -68,6 +69,18 @@ private final class GrowJournalPublicAssetPublisher {
         }
     }
 
+    func removePublishedAsset(assetId: UInt64) {
+        let assetDirectoryURL = publicAssetsRootURL.appendingPathComponent(String(assetId), isDirectory: true)
+        guard fileManager.fileExists(atPath: assetDirectoryURL.path) else {
+            return
+        }
+        do {
+            try fileManager.removeItem(at: assetDirectoryURL)
+        } catch {
+            print("[GrowJournalPublicAssetPublisher] failed to remove public asset \(assetId): \(error)")
+        }
+    }
+
     private func preparePublicAssetDirectory(assetId: UInt64) throws -> URL {
         try fileManager.createDirectory(at: publicAssetsRootURL, withIntermediateDirectories: true)
         let directoryURL = publicAssetsRootURL.appendingPathComponent(String(assetId), isDirectory: true)
@@ -115,7 +128,7 @@ private final class GrowJournalPublicAssetPublisher {
     }
 }
 
-final class GrowJournalMockStore: @unchecked Sendable {
+final class GrowJournalStore: @unchecked Sendable {
     private struct StoryRecord {
         var detail: StoryDetail
         var updates: [StoryUpdate]
@@ -135,9 +148,9 @@ final class GrowJournalMockStore: @unchecked Sendable {
         var assetId: UInt64
         var storyId: UInt64
         var originalFilename: String
-        var payload: [UInt8]
     }
 
+    private let fileManager = FileManager.default
     private let lock = NSLock()
     private var nextStoryId: UInt64 = 100
     private var nextUpdateId: UInt64 = 1000
@@ -145,17 +158,45 @@ final class GrowJournalMockStore: @unchecked Sendable {
     private var stories: [UInt64: StoryRecord] = [:]
     private var storySlugs: [String: UInt64] = [:]
     private var assets: [UInt64: MediaAsset] = [:]
+    private var assetUpdateIds: [UInt64: UInt64] = [:]
+    private var attachedAssetIds: Set<UInt64> = []
     private var uploads: [UInt64: UploadSession] = [:]
     private var mediaPayloads: [UInt64: [UInt8]] = [:]
     private var watchers: [UInt64: [UUID: NPRPCStreamWriter<StoryStreamServerEvent>]] = [:]
+    private let db: AppDatabase
+    private let sessionService: SessionService
     private let videoProcessor: GrowJournalVideoProcessor
     private let publicAssetPublisher: GrowJournalPublicAssetPublisher
+    private let mediaRootURL: URL
+    private let uploadSpoolRootURL: URL
 
-    init(videoRootPath: String = "/app/sample_data/grow_journal_media", publicRootPath: String = "/app/runtime/www") {
+    init(db: AppDatabase, videoRootPath: String = "/app/sample_data/grow_journal_media", publicRootPath: String = "/app/runtime/www") {
+        self.db = db
+        self.sessionService = SessionService(db: db)
         self.videoProcessor = GrowJournalVideoProcessor(rootPath: videoRootPath)
         self.publicAssetPublisher = GrowJournalPublicAssetPublisher(mediaRootPath: videoRootPath, publicRootPath: publicRootPath)
-        seedData()
-        publishSeedAssets()
+        self.mediaRootURL = URL(fileURLWithPath: videoRootPath, isDirectory: true)
+        self.uploadSpoolRootURL = self.mediaRootURL.appendingPathComponent("uploads", isDirectory: true)
+        do {
+            try fileManager.createDirectory(at: uploadSpoolRootURL, withIntermediateDirectories: true)
+            try loadStateFromDatabase()
+            if stories.isEmpty {
+                seedData()
+                try persistCurrentStateToDatabase()
+            }
+            try restoreUploadSessionsFromDatabase()
+        } catch {
+            print("[GrowJournal] failed to load journal state from DB: \(error)")
+            seedData()
+            do {
+                try persistCurrentStateToDatabase()
+            } catch {
+                print("[GrowJournal] failed to persist seeded journal state: \(error)")
+            }
+        }
+        reconcilePersistedVideoAssets()
+        publishPersistedAssets()
+        recoverInterruptedVideoJobs()
     }
 
     func listStories(page: UInt32, pageSize: UInt32) -> StoryPage {
@@ -223,6 +264,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
             storySlugs[slug] = storyId
             return detail
         }
+        persistStory(story)
         return story
     }
 
@@ -254,11 +296,73 @@ final class GrowJournalMockStore: @unchecked Sendable {
             storyId: req.story_id,
             event: StoryStreamServerEvent(story_id: req.story_id, update: update, media: nil, progress: nil)
         )
+        persistUpdate(update)
+        if let detail = withLock({ stories[req.story_id]?.detail }) {
+            persistStory(detail)
+        }
         return update
     }
 
+    func deleteStory(sessionId: String, storyId: UInt64) throws -> Bool {
+        _ = try requireAdmin(sessionId: sessionId)
+
+        let deletion = try withLock { () throws -> ([UInt64], [UInt64: String], [NPRPCStreamWriter<StoryStreamServerEvent>]) in
+            guard let record = stories.removeValue(forKey: storyId) else {
+                throw NotFound(msg: "Story not found")
+            }
+
+            storySlugs.removeValue(forKey: record.detail.slug)
+
+            let assetIds = record.updates.flatMap { update in
+                update.media.map(\ .id)
+            }
+            let originalFilenames = Dictionary(uniqueKeysWithValues: assetIds.compactMap { assetId in
+                assets[assetId].map { (assetId, $0.original_filename) }
+            })
+            let storyWatchers = Array((watchers.removeValue(forKey: storyId) ?? [:]).values)
+
+            for assetId in assetIds {
+                assets.removeValue(forKey: assetId)
+                assetUpdateIds.removeValue(forKey: assetId)
+                attachedAssetIds.remove(assetId)
+                uploads.removeValue(forKey: assetId)
+                mediaPayloads.removeValue(forKey: assetId)
+            }
+
+            return (assetIds, originalFilenames, storyWatchers)
+        }
+
+        do {
+            try db.dbQueue.write { db in
+                try JournalStoryRecord
+                    .filter(Column("id") == Int64(storyId))
+                    .deleteAll(db)
+                try JournalUploadSessionRecord
+                    .filter(Column("storyId") == Int64(storyId))
+                    .deleteAll(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to delete story \(storyId) from DB: \(error)")
+            throw error
+        }
+
+        for assetId in deletion.0 {
+            publicAssetPublisher.removePublishedAsset(assetId: assetId)
+            removeUploadSpool(assetId: assetId)
+            if let originalFilename = deletion.1[assetId] {
+                videoProcessor.removeAssetFiles(assetId: assetId, originalFilename: originalFilename)
+            }
+        }
+
+        for writer in deletion.2 {
+            writer.close()
+        }
+
+        return true
+    }
+
     func createUpload(storyId: UInt64, updateId: UInt64, filename: String, mimeType: String, kind: MediaKind) throws -> UploadTarget {
-        try withLock {
+        let target = try withLock {
             guard var record = stories[storyId] else {
                 throw NotFound(msg: "Story not found")
             }
@@ -297,6 +401,8 @@ final class GrowJournalMockStore: @unchecked Sendable {
             )
 
             assets[assetId] = asset
+            assetUpdateIds[assetId] = updateId
+            attachedAssetIds.remove(assetId)
             uploads[assetId] = UploadSession(
                 assetId: assetId,
                 storyId: storyId,
@@ -326,10 +432,17 @@ final class GrowJournalMockStore: @unchecked Sendable {
                 mime_type: mimeType
             )
         }
+        persistAsset(target.asset_id)
+        persistUploadSession(assetId: target.asset_id)
+        ensureUploadSpoolExists(assetId: target.asset_id)
+        if let update = withLock({ stories[storyId]?.updates.first(where: { $0.id == updateId }) }) {
+            persistUpdate(update)
+        }
+        return target
     }
 
     func beginUpload(assetId: UInt64, token: String) -> Bool {
-        withLock {
+        let accepted = withLock {
             guard let upload = uploads[assetId], upload.token == token, var asset = assets[assetId] else {
                 return false
             }
@@ -338,10 +451,14 @@ final class GrowJournalMockStore: @unchecked Sendable {
             assets[assetId] = asset
             return true
         }
+        if accepted {
+            persistAsset(assetId)
+        }
+        return accepted
     }
 
     func appendUploadChunk(assetId: UInt64, token: String, chunk: [UInt8]) -> (UploadProgress, UInt64)? {
-        withLock {
+        let progress: (UploadProgress, UInt64)? = withLock {
             guard var upload = uploads[assetId], upload.token == token, var asset = assets[assetId] else {
                 return nil
             }
@@ -354,6 +471,12 @@ final class GrowJournalMockStore: @unchecked Sendable {
             assets[assetId] = asset
             return (UploadProgress(asset_id: assetId, bytes_received: upload.bytesReceived), upload.storyId)
         }
+        if progress != nil {
+            appendToUploadSpool(assetId: assetId, chunk: chunk)
+            persistAsset(assetId)
+            persistUploadSession(assetId: assetId)
+        }
+        return progress
     }
 
     func finishUpload(assetId: UInt64, token: String) throws -> (UploadProgress, UInt64, MediaAsset) {
@@ -386,7 +509,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
             uploads.removeValue(forKey: assetId)
 
             let videoJob = upload.kind == .Video
-                ? VideoProcessingJob(assetId: assetId, storyId: upload.storyId, originalFilename: asset.original_filename, payload: upload.payload)
+                ? VideoProcessingJob(assetId: assetId, storyId: upload.storyId, originalFilename: asset.original_filename)
                 : nil
             let imageJob = upload.kind == .Image
                 ? ImagePublicationJob(assetId: assetId, originalFilename: asset.original_filename, payload: upload.payload)
@@ -407,6 +530,9 @@ final class GrowJournalMockStore: @unchecked Sendable {
                 _ = withLock {
                     mediaPayloads.removeValue(forKey: imageJob.assetId)
                 }
+                removeUploadSpool(assetId: imageJob.assetId)
+                deleteUploadSession(assetId: imageJob.assetId)
+                persistAsset(imageJob.assetId)
             } catch {
                 print("[GrowJournal] failed to publish image asset \(imageJob.assetId): \(error)")
                 let failedAsset = withLock { () -> MediaAsset in
@@ -416,13 +542,18 @@ final class GrowJournalMockStore: @unchecked Sendable {
                     assets[imageJob.assetId] = asset
                     return asset
                 }
+                persistAsset(imageJob.assetId)
                 return (result.0, result.1, failedAsset)
             }
         }
 
         if let videoJob = result.4 {
             do {
-                _ = try videoProcessor.stageOriginal(assetId: videoJob.assetId, originalFilename: videoJob.originalFilename, payload: videoJob.payload)
+                _ = try videoProcessor.stageOriginal(assetId: videoJob.assetId, originalFilename: videoJob.originalFilename, stagedUploadURL: uploadSpoolURL(assetId: videoJob.assetId))
+                _ = withLock {
+                    mediaPayloads.removeValue(forKey: videoJob.assetId)
+                }
+                deleteUploadSession(assetId: videoJob.assetId)
                 print("[GrowJournal] queued video processing for asset \(videoJob.assetId)")
                 queueVideoProcessing(videoJob)
             } catch {
@@ -434,15 +565,18 @@ final class GrowJournalMockStore: @unchecked Sendable {
                     assets[videoJob.assetId] = asset
                     return asset
                 }
+                persistAsset(videoJob.assetId)
                 return (result.0, result.1, failedAsset)
             }
         }
+
+        persistAsset(assetId)
 
         return (result.0, result.1, result.2)
     }
 
     func abortUpload(assetId: UInt64, token: String) -> Bool {
-        withLock {
+        let aborted = withLock {
             guard let upload = uploads[assetId], upload.token == token, var asset = assets[assetId] else {
                 return false
             }
@@ -453,6 +587,12 @@ final class GrowJournalMockStore: @unchecked Sendable {
             assets[assetId] = asset
             return true
         }
+        if aborted {
+            persistAsset(assetId)
+            deleteUploadSession(assetId: assetId)
+            removeUploadSpool(assetId: assetId)
+        }
+        return aborted
     }
 
     func attachAsset(updateId: UInt64, assetId: UInt64) throws -> StoryUpdate {
@@ -481,6 +621,14 @@ final class GrowJournalMockStore: @unchecked Sendable {
             storyId: result.1,
             event: StoryStreamServerEvent(story_id: result.1, update: result.0, media: result.2, progress: nil)
         )
+        _ = withLock {
+            attachedAssetIds.insert(assetId)
+        }
+        persistAsset(assetId)
+        persistUpdate(result.0)
+        if let detail = withLock({ stories[result.1]?.detail }) {
+            persistStory(detail)
+        }
         return result.0
     }
 
@@ -568,6 +716,200 @@ final class GrowJournalMockStore: @unchecked Sendable {
         }
     }
 
+    private func loadStateFromDatabase() throws {
+        let loadedStories: [JournalStoryRecord] = try db.dbQueue.read { db in
+            try JournalStoryRecord.fetchAll(db)
+        }
+        let loadedUpdates: [JournalUpdateRecord] = try db.dbQueue.read { db in
+            try JournalUpdateRecord.fetchAll(db)
+        }
+        let loadedAssets: [JournalMediaAssetRecord] = try db.dbQueue.read { db in
+            try JournalMediaAssetRecord.fetchAll(db)
+        }
+
+        stories.removeAll()
+        storySlugs.removeAll()
+        assets.removeAll()
+        assetUpdateIds.removeAll()
+        attachedAssetIds.removeAll()
+
+        var attachedMediaByUpdateId: [UInt64: [MediaAsset]] = [:]
+        for assetRecord in loadedAssets {
+            let asset = assetRecord.toRpc()
+            let assetId = asset.id
+            let updateId = UInt64(assetRecord.updateId)
+            assets[assetId] = asset
+            assetUpdateIds[assetId] = updateId
+            if assetRecord.attached {
+                attachedAssetIds.insert(assetId)
+                attachedMediaByUpdateId[updateId, default: []].append(asset)
+            }
+        }
+
+        for storyRecord in loadedStories {
+            let detail = storyRecord.toRpc()
+            stories[detail.id] = StoryRecord(detail: detail, updates: [])
+            storySlugs[detail.slug] = detail.id
+        }
+
+        let orderedUpdates = loadedUpdates.sorted { lhs, rhs in lhs.createdAt > rhs.createdAt }
+        for updateRecord in orderedUpdates {
+            let updateId = UInt64(updateRecord.id ?? 0)
+            let media = (attachedMediaByUpdateId[updateId] ?? []).sorted { lhs, rhs in rhs.created_at < lhs.created_at }
+            let update = updateRecord.toRpc(media: media)
+            stories[update.story_id]?.updates.append(update)
+        }
+
+        nextStoryId = max((stories.keys.max() ?? 99) + 1, 100)
+        let maxUpdateId = loadedUpdates.compactMap(\ .id).map(UInt64.init).max() ?? 999
+        nextUpdateId = max(maxUpdateId + 1, 1000)
+        let maxAssetId = loadedAssets.compactMap(\ .id).map(UInt64.init).max() ?? 4999
+        nextAssetId = max(maxAssetId + 1, 5000)
+    }
+
+    private func restoreUploadSessionsFromDatabase() throws {
+        let sessionRecords: [JournalUploadSessionRecord] = try db.dbQueue.read { db in
+            try JournalUploadSessionRecord.fetchAll(db)
+        }
+
+        for sessionRecord in sessionRecords {
+            let assetId = UInt64(sessionRecord.assetId)
+            guard let asset = assets[assetId] else {
+                deleteUploadSession(assetId: assetId)
+                removeUploadSpool(assetId: assetId)
+                continue
+            }
+
+            let spoolURL = uploadSpoolURL(assetId: assetId)
+            guard let payloadData = try? Data(contentsOf: spoolURL) else {
+                markRecoveredUploadFailed(assetId: assetId, message: "Upload session data was lost during restart recovery.")
+                deleteUploadSession(assetId: assetId)
+                continue
+            }
+
+            let payload = [UInt8](payloadData)
+            let bytesReceived = UInt64(max(Int64(payload.count), sessionRecord.bytesReceived))
+            uploads[assetId] = UploadSession(
+                assetId: assetId,
+                storyId: UInt64(sessionRecord.storyId),
+                updateId: sessionRecord.updateId.map(UInt64.init),
+                kind: MediaKind(rawValue: UInt32(sessionRecord.kind)) ?? asset.kind,
+                token: sessionRecord.token,
+                bytesReceived: bytesReceived,
+                payload: payload
+            )
+            mediaPayloads[assetId] = payload
+
+            var repairedAsset = asset
+            repairedAsset.byte_size = bytesReceived
+            if repairedAsset.status == .PendingUpload {
+                repairedAsset.status = .Uploading
+            }
+            assets[assetId] = repairedAsset
+            persistAsset(assetId)
+            persistUploadSession(assetId: assetId)
+        }
+    }
+
+    private func persistCurrentStateToDatabase() throws {
+        try db.dbQueue.write { db in
+            try JournalMediaAssetRecord.deleteAll(db)
+            try JournalUpdateRecord.deleteAll(db)
+            try JournalStoryRecord.deleteAll(db)
+
+            for detail in stories.values.map(\ .detail).sorted(by: { $0.id < $1.id }) {
+                var record = JournalStoryRecord.from(rpc: detail)
+                try record.save(db)
+            }
+
+            let updates = stories.values
+                .flatMap(\ .updates)
+                .sorted { $0.id < $1.id }
+            for update in updates {
+                var record = JournalUpdateRecord.from(rpc: update)
+                try record.save(db)
+            }
+
+            for asset in assets.values.sorted(by: { $0.id < $1.id }) {
+                guard let updateId = assetUpdateIds[asset.id] else {
+                    continue
+                }
+                var record = JournalMediaAssetRecord.from(rpc: asset, updateId: updateId, attached: attachedAssetIds.contains(asset.id))
+                try record.save(db)
+            }
+        }
+    }
+
+    private func persistStory(_ detail: StoryDetail) {
+        do {
+            try db.dbQueue.write { db in
+                var record = JournalStoryRecord.from(rpc: detail)
+                try record.save(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to persist story \(detail.id): \(error)")
+        }
+    }
+
+    private func persistUpdate(_ update: StoryUpdate) {
+        do {
+            try db.dbQueue.write { db in
+                var record = JournalUpdateRecord.from(rpc: update)
+                try record.save(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to persist update \(update.id): \(error)")
+        }
+    }
+
+    private func persistAsset(_ assetId: UInt64) {
+        guard let asset = withLock({ assets[assetId] }), let updateId = withLock({ assetUpdateIds[assetId] }) else {
+            return
+        }
+        let attached = withLock { attachedAssetIds.contains(assetId) }
+        do {
+            try db.dbQueue.write { db in
+                var record = JournalMediaAssetRecord.from(rpc: asset, updateId: updateId, attached: attached)
+                try record.save(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to persist asset \(assetId): \(error)")
+        }
+    }
+
+    private func persistUploadSession(assetId: UInt64) {
+        guard let upload = withLock({ uploads[assetId] }) else {
+            return
+        }
+        do {
+            try db.dbQueue.write { db in
+                var record = JournalUploadSessionRecord(
+                    assetId: Int64(upload.assetId),
+                    storyId: Int64(upload.storyId),
+                    updateId: upload.updateId.map(Int64.init),
+                    kind: Int32(upload.kind.rawValue),
+                    token: upload.token,
+                    bytesReceived: Int64(upload.bytesReceived)
+                )
+                try record.save(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to persist upload session \(assetId): \(error)")
+        }
+    }
+
+    private func deleteUploadSession(assetId: UInt64) {
+        do {
+            _ = try db.dbQueue.write { db in
+                try JournalUploadSessionRecord
+                    .filter(Column("assetId") == Int64(assetId))
+                    .deleteAll(db)
+            }
+        } catch {
+            print("[GrowJournal] failed to delete upload session \(assetId): \(error)")
+        }
+    }
+
     private func seedData() {
         let seededImageURL = publicAssetPublisher.hasImageAsset(assetId: 500)
             ? "/mock/journal/assets/500/image"
@@ -608,7 +950,9 @@ final class GrowJournalMockStore: @unchecked Sendable {
 
         assets[500] = imageAsset
         assets[502] = videoAsset
-        mediaPayloads[500] = Array(repeating: 0x4A, count: 182_000)
+    assetUpdateIds[500] = 100
+    assetUpdateIds[502] = 102
+    attachedAssetIds = [500, 502]
 
         let basilStory = StoryDetail(
             id: 10,
@@ -743,25 +1087,111 @@ final class GrowJournalMockStore: @unchecked Sendable {
         storySlugs[basilStory.slug] = basilStory.id
         storySlugs[tomatoStory.slug] = tomatoStory.id
         storySlugs[lettuceStory.slug] = lettuceStory.id
-
-        nextStoryId = 13
-        nextUpdateId = 105
-        nextAssetId = 502
     }
 
-    private func publishSeedAssets() {
-        if publicAssetPublisher.hasImageAsset(assetId: 500) {
-            do {
-                try publicAssetPublisher.publishImageAsset(assetId: 500)
-            } catch {
-                print("[GrowJournal] failed to publish seeded image asset 500: \(error)")
+    private func publishPersistedAssets() {
+        for asset in assets.values.sorted(by: { $0.id < $1.id }) {
+            switch asset.kind {
+            case .Image:
+                guard publicAssetPublisher.hasImageAsset(assetId: asset.id) else {
+                    continue
+                }
+                do {
+                    try publicAssetPublisher.publishImageAsset(assetId: asset.id)
+                } catch {
+                    print("[GrowJournal] failed to publish image asset \(asset.id): \(error)")
+                }
+            case .Video:
+                do {
+                    try publicAssetPublisher.publishVideoAsset(assetId: asset.id)
+                } catch {
+                    print("[GrowJournal] failed to publish video asset \(asset.id): \(error)")
+                }
+            }
+        }
+    }
+
+    private func reconcilePersistedVideoAssets() {
+        let persistedVideoAssets = withLock {
+            assets.values
+                .filter { $0.kind == .Video }
+                .sorted(by: { $0.id < $1.id })
+                .map { asset in
+                    (
+                        asset,
+                        assetUpdateIds[asset.id].flatMap { updateId in findUpdate(updateId: updateId)?.0 }
+                    )
+                }
+        }
+
+        for (asset, storyId) in persistedVideoAssets {
+            let hasOriginal = videoProcessor.hasOriginal(assetId: asset.id, originalFilename: asset.original_filename)
+            let hasProcessedOutput = videoProcessor.hasProcessedOutput(assetId: asset.id, originalFilename: asset.original_filename)
+
+            switch asset.status {
+            case .Ready:
+                guard !hasProcessedOutput else {
+                    continue
+                }
+
+                if hasOriginal, let storyId {
+                    let requeuedAsset = withLock { () -> MediaAsset? in
+                        guard var currentAsset = assets[asset.id] else {
+                            return nil
+                        }
+                        currentAsset.status = .Queued
+                        currentAsset.error_message = "Processed video files were missing and the asset is being rebuilt."
+                        currentAsset.poster_url = nil
+                        currentAsset.dash_manifest_url = nil
+                        assets[asset.id] = currentAsset
+                        return currentAsset
+                    }
+                    persistAsset(asset.id)
+                    if let requeuedAsset {
+                        broadcast(
+                            storyId: storyId,
+                            event: StoryStreamServerEvent(story_id: storyId, update: nil, media: requeuedAsset, progress: nil)
+                        )
+                    }
+                    print("[GrowJournal] requeueing video asset \(asset.id) because processed files are missing")
+                    queueVideoProcessing(VideoProcessingJob(assetId: asset.id, storyId: storyId, originalFilename: asset.original_filename))
+                } else {
+                    markRecoveredUploadFailed(assetId: asset.id, message: "Processed video files are missing and the original upload is no longer available.", storyId: storyId)
+                }
+            case .Queued, .Processing:
+                guard hasOriginal else {
+                    markRecoveredUploadFailed(assetId: asset.id, message: "Queued video source is missing after restart.", storyId: storyId)
+                    continue
+                }
+            default:
+                continue
+            }
+        }
+    }
+
+    private func recoverInterruptedVideoJobs() {
+        let queuedJobs = withLock {
+            assets.values.compactMap { asset -> VideoProcessingJob? in
+                guard asset.kind == .Video else {
+                    return nil
+                }
+                guard asset.status == .Queued || asset.status == .Processing else {
+                    return nil
+                }
+                guard let updateId = assetUpdateIds[asset.id], let (storyId, _) = findUpdate(updateId: updateId) else {
+                    return nil
+                }
+                return VideoProcessingJob(assetId: asset.id, storyId: storyId, originalFilename: asset.original_filename)
             }
         }
 
-        do {
-            try publicAssetPublisher.publishVideoAsset(assetId: 502)
-        } catch {
-            print("[GrowJournal] failed to publish seeded video asset 502: \(error)")
+        for job in queuedJobs {
+            guard videoProcessor.hasOriginal(assetId: job.assetId, originalFilename: job.originalFilename) else {
+                markRecoveredUploadFailed(assetId: job.assetId, message: "Queued video source is missing after restart.", storyId: job.storyId)
+                continue
+            }
+            print("[GrowJournal] recovering queued video job for asset \(job.assetId)")
+            queueVideoProcessing(job)
         }
     }
 
@@ -847,6 +1277,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
             assets[job.assetId] = asset
             return asset
         }
+        persistAsset(job.assetId)
 
         if let processingAsset {
             broadcast(
@@ -878,6 +1309,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
                 mediaPayloads.removeValue(forKey: job.assetId)
                 return asset
             }
+            persistAsset(job.assetId)
 
             if let readyAsset {
                 print("[GrowJournal] processing video asset \(job.assetId) finished size=\(readyAsset.byte_size) poster=\(hasPoster)")
@@ -897,6 +1329,7 @@ final class GrowJournalMockStore: @unchecked Sendable {
                 assets[job.assetId] = asset
                 return asset
             }
+            persistAsset(job.assetId)
 
             if let failedAsset {
                 broadcast(
@@ -907,6 +1340,80 @@ final class GrowJournalMockStore: @unchecked Sendable {
         }
     }
 
+    private func requireAdmin(sessionId: String) throws -> UserRecord {
+        guard let user = try sessionService.user(forSession: sessionId) else {
+            throw PermissionDenied(msg: "You must be logged in to moderate journal stories.")
+        }
+        guard user.isAdmin else {
+            throw PermissionDenied(msg: "Moderator rights are required to delete stories.")
+        }
+        return user
+    }
+
+    private func uploadSpoolURL(assetId: UInt64) -> URL {
+        uploadSpoolRootURL.appendingPathComponent("\(assetId).upload")
+    }
+
+    private func ensureUploadSpoolExists(assetId: UInt64) {
+        let url = uploadSpoolURL(assetId: assetId)
+        guard !fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        _ = fileManager.createFile(atPath: url.path, contents: Data())
+    }
+
+    private func appendToUploadSpool(assetId: UInt64, chunk: [UInt8]) {
+        ensureUploadSpoolExists(assetId: assetId)
+        let url = uploadSpoolURL(assetId: assetId)
+        do {
+            let handle = try FileHandle(forWritingTo: url)
+            defer {
+                try? handle.close()
+            }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(chunk))
+        } catch {
+            print("[GrowJournal] failed to append upload spool for asset \(assetId): \(error)")
+        }
+    }
+
+    private func removeUploadSpool(assetId: UInt64) {
+        let url = uploadSpoolURL(assetId: assetId)
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        do {
+            try fileManager.removeItem(at: url)
+        } catch {
+            print("[GrowJournal] failed to remove upload spool for asset \(assetId): \(error)")
+        }
+    }
+
+    private func markRecoveredUploadFailed(assetId: UInt64, message: String, storyId: UInt64? = nil) {
+        let resolvedStoryId = withLock { () -> UInt64? in
+            guard var asset = assets[assetId] else {
+                return nil
+            }
+            asset.status = .Failed
+            asset.error_message = message
+            asset.poster_url = nil
+            asset.dash_manifest_url = nil
+            assets[assetId] = asset
+            return storyId ?? assetUpdateIds[assetId].flatMap { findUpdate(updateId: $0)?.0 }
+        }
+        persistAsset(assetId)
+        removeUploadSpool(assetId: assetId)
+        publicAssetPublisher.removePublishedAsset(assetId: assetId)
+
+        guard let resolvedStoryId, let failedAsset = withLock({ assets[assetId] }) else {
+            return
+        }
+        broadcast(
+            storyId: resolvedStoryId,
+            event: StoryStreamServerEvent(story_id: resolvedStoryId, update: nil, media: failedAsset, progress: nil)
+        )
+    }
+
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {
         lock.lock()
         defer { lock.unlock() }
@@ -915,9 +1422,9 @@ final class GrowJournalMockStore: @unchecked Sendable {
 }
 
 final class JournalServiceServantImpl: JournalServiceServant, @unchecked Sendable {
-    private let store: GrowJournalMockStore
+    private let store: GrowJournalStore
 
-    init(store: GrowJournalMockStore) {
+    init(store: GrowJournalStore) {
         self.store = store
         super.init()
     }
@@ -942,6 +1449,10 @@ final class JournalServiceServantImpl: JournalServiceServant, @unchecked Sendabl
         try store.createUpdate(req: req)
     }
 
+    override func deleteStory(session_id: String, story_id: UInt64) throws -> Bool {
+        try store.deleteStory(sessionId: session_id, storyId: story_id)
+    }
+
     override func createImageUpload(story_id: UInt64, update_id: UInt64, filename: String, mime_type: String) throws -> UploadTarget {
         try store.createUpload(storyId: story_id, updateId: update_id, filename: filename, mimeType: mime_type, kind: .Image)
     }
@@ -956,9 +1467,9 @@ final class JournalServiceServantImpl: JournalServiceServant, @unchecked Sendabl
 }
 
 final class UploadServiceServantImpl: UploadServiceServant, @unchecked Sendable {
-    private let store: GrowJournalMockStore
+    private let store: GrowJournalStore
 
-    init(store: GrowJournalMockStore) {
+    init(store: GrowJournalStore) {
         self.store = store
         super.init()
     }
@@ -999,9 +1510,9 @@ final class UploadServiceServantImpl: UploadServiceServant, @unchecked Sendable 
 }
 
 final class StoryStreamServiceServantImpl: StoryStreamServiceServant, @unchecked Sendable {
-    private let store: GrowJournalMockStore
+    private let store: GrowJournalStore
 
-    init(store: GrowJournalMockStore) {
+    init(store: GrowJournalStore) {
         self.store = store
         super.init()
     }
@@ -1028,9 +1539,9 @@ final class StoryStreamServiceServantImpl: StoryStreamServiceServant, @unchecked
 }
 
 final class MediaServiceServantImpl: MediaServiceServant, @unchecked Sendable {
-    private let store: GrowJournalMockStore
+    private let store: GrowJournalStore
 
-    init(store: GrowJournalMockStore) {
+    init(store: GrowJournalStore) {
         self.store = store
         super.init()
     }

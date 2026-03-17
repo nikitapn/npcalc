@@ -63,6 +63,28 @@ final class GrowJournalVideoProcessor {
         return bundle
     }
 
+    func stageOriginal(assetId: UInt64, originalFilename: String, stagedUploadURL: URL) throws -> ProcessedVideoBundle {
+        let bundle = bundleFor(assetId: assetId, originalFilename: originalFilename)
+        try fileManager.createDirectory(at: bundle.originalDirectoryURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: bundle.processedDirectoryURL, withIntermediateDirectories: true)
+
+        if fileManager.fileExists(atPath: bundle.sourceURL.path) {
+            try fileManager.removeItem(at: bundle.sourceURL)
+        }
+
+        do {
+            try fileManager.moveItem(at: stagedUploadURL, to: bundle.sourceURL)
+        } catch {
+            try fileManager.copyItem(at: stagedUploadURL, to: bundle.sourceURL)
+            try? fileManager.removeItem(at: stagedUploadURL)
+        }
+
+        let attributes = try fileManager.attributesOfItem(atPath: bundle.sourceURL.path)
+        let byteCount = (attributes[.size] as? NSNumber)?.intValue ?? 0
+        print("[GrowJournalVideo] staged original asset=\(assetId) file=\(bundle.sourceURL.path) bytes=\(byteCount)")
+        return bundle
+    }
+
     func process(assetId: UInt64, originalFilename: String) throws -> ProcessedVideoBundle {
         let bundle = bundleFor(assetId: assetId, originalFilename: originalFilename)
         try fileManager.createDirectory(at: bundle.processedDirectoryURL, withIntermediateDirectories: true)
@@ -189,6 +211,42 @@ final class GrowJournalVideoProcessor {
     func hasPoster(assetId: UInt64, originalFilename: String) -> Bool {
         let posterURL = bundleFor(assetId: assetId, originalFilename: originalFilename).posterURL
         return fileManager.fileExists(atPath: posterURL.path)
+    }
+
+    func hasOriginal(assetId: UInt64, originalFilename: String) -> Bool {
+        let bundle = bundleFor(assetId: assetId, originalFilename: originalFilename)
+        return fileManager.fileExists(atPath: bundle.sourceURL.path)
+    }
+
+    func hasProcessedOutput(assetId: UInt64, originalFilename: String) -> Bool {
+        let bundle = bundleFor(assetId: assetId, originalFilename: originalFilename)
+        let legacyStreamURL = bundle.processedDirectoryURL.appendingPathComponent("stream_dashinit.mp4")
+
+        let hasManifest = fileManager.fileExists(atPath: bundle.adaptiveManifestURL.path)
+            || fileManager.fileExists(atPath: bundle.manifestURL.path)
+        let hasLegacyStream = fileManager.fileExists(atPath: bundle.streamURL.path)
+            || fileManager.fileExists(atPath: legacyStreamURL.path)
+        let hasAdaptiveMedia = fileManager.fileExists(atPath: bundle.adaptiveAudioURL.path)
+            && adaptiveRenditions.contains { rendition in
+                let renditionURL = bundle.processedDirectoryURL.appendingPathComponent(rendition.fileName)
+                return fileManager.fileExists(atPath: renditionURL.path)
+            }
+
+        return hasManifest && (hasLegacyStream || hasAdaptiveMedia)
+    }
+
+    func removeAssetFiles(assetId: UInt64, originalFilename: String) {
+        let bundle = bundleFor(assetId: assetId, originalFilename: originalFilename)
+        for directoryURL in [bundle.originalDirectoryURL, bundle.processedDirectoryURL] {
+            guard fileManager.fileExists(atPath: directoryURL.path) else {
+                continue
+            }
+            do {
+                try fileManager.removeItem(at: directoryURL)
+            } catch {
+                print("[GrowJournalVideo] failed to remove asset directory \(directoryURL.path): \(error)")
+            }
+        }
     }
 
     private func bundleFor(assetId: UInt64, originalFilename: String) -> ProcessedVideoBundle {

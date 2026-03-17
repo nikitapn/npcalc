@@ -145,6 +145,80 @@ final class AppDatabase: Sendable {
             }
           }
 
+        migrator.registerMigration("v3_grow_journal") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS JournalStory (
+                  id INTEGER PRIMARY KEY,
+                  slug TEXT NOT NULL UNIQUE,
+                  title TEXT NOT NULL,
+                  cropName TEXT NOT NULL,
+                  description TEXT NOT NULL,
+                  coverImageURL TEXT,
+                  solutionId INTEGER,
+                  solutionName TEXT,
+                  authorName TEXT NOT NULL,
+                  visibility INTEGER NOT NULL,
+                  stage INTEGER NOT NULL,
+                  createdAt TEXT NOT NULL,
+                  updatedAt TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS JournalUpdate (
+                  id INTEGER PRIMARY KEY,
+                  storyId INTEGER NOT NULL,
+                  authorName TEXT NOT NULL,
+                  title TEXT,
+                  body TEXT NOT NULL,
+                  kind INTEGER NOT NULL,
+                  measurementsJSON TEXT,
+                  createdAt TEXT NOT NULL,
+                  FOREIGN KEY (storyId) REFERENCES JournalStory (id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS JournalUpdate_storyId ON JournalUpdate (storyId);
+
+                CREATE TABLE IF NOT EXISTS JournalMediaAsset (
+                  id INTEGER PRIMARY KEY,
+                  updateId INTEGER NOT NULL,
+                  kind INTEGER NOT NULL,
+                  status INTEGER NOT NULL,
+                  originalFilename TEXT NOT NULL,
+                  mimeType TEXT NOT NULL,
+                  byteSize INTEGER NOT NULL,
+                  width INTEGER,
+                  height INTEGER,
+                  durationMs INTEGER,
+                  imageURL TEXT,
+                  posterURL TEXT,
+                  dashManifestURL TEXT,
+                  createdAt TEXT NOT NULL,
+                  errorMessage TEXT,
+                  attached BOOLEAN NOT NULL DEFAULT 0,
+                  FOREIGN KEY (updateId) REFERENCES JournalUpdate (id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS JournalMediaAsset_updateId ON JournalMediaAsset (updateId);
+            """)
+        }
+
+            migrator.registerMigration("v4_grow_journal_recovery") { db in
+              try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS JournalUploadSession (
+                  assetId INTEGER PRIMARY KEY,
+                  storyId INTEGER NOT NULL,
+                  updateId INTEGER,
+                  kind INTEGER NOT NULL,
+                  token TEXT NOT NULL,
+                  bytesReceived INTEGER NOT NULL,
+                  FOREIGN KEY (assetId) REFERENCES JournalMediaAsset (id) ON DELETE CASCADE,
+                  FOREIGN KEY (storyId) REFERENCES JournalStory (id) ON DELETE CASCADE,
+                  FOREIGN KEY (updateId) REFERENCES JournalUpdate (id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS JournalUploadSession_storyId ON JournalUploadSession (storyId);
+              """)
+            }
+
         try migrator.migrate(dbQueue)
     }
 }

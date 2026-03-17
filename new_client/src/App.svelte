@@ -1,8 +1,18 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Calculator from "./view/Calculator.svelte";
   import Journal from "./view/Journal.svelte";
   import Solutions from "./view/Solutions.svelte";
   import Fertilizers from "./view/Fertilizers.svelte";
+  import { getCookie, setCookie } from "./lib/cookies";
+  import { getNscalcRpc } from "./lib/nscalcRpc";
+  import * as nscalc from "@rpc/nscalc";
+
+  type AuthState = {
+    name: string;
+    sessionId: string;
+    isAdmin: boolean;
+  } | null;
 
   type View = "journal" | "calculator" | "solutions" | "fertilizers" | "chat" | "about";
 
@@ -17,6 +27,11 @@
 
   let mobileMenuEnabled = $state(false);
   let currentView = $state<View>("journal");
+  let email = $state("superuser@nscalc.com");
+  let password = $state("1234");
+  let authState = $state<AuthState>(null);
+  let authBusy = $state(false);
+  let authError = $state<string | null>(null);
 
   function changeView(view: View) {
     mobileMenuEnabled = false;
@@ -24,6 +39,93 @@
   }
 
   const activeItem = $derived(navItems.find((item) => item.id === currentView) ?? navItems[0]);
+
+  onMount(() => {
+    void restoreSession();
+  });
+
+  async function restoreSession(): Promise<void> {
+    const sessionId = getCookie("sid");
+    if (!sessionId) {
+      return;
+    }
+
+    authBusy = true;
+    authError = null;
+    try {
+      const { authorizator } = await getNscalcRpc();
+      const userData = await authorizator.LogInWithSessionId(sessionId);
+      authState = {
+        name: userData.name,
+        sessionId: userData.sessionId,
+        isAdmin: userData.isAdmin,
+      };
+      setCookie("sid", userData.sessionId);
+    } catch {
+      setCookie("sid", null);
+      authState = null;
+    } finally {
+      authBusy = false;
+    }
+  }
+
+  async function logIn(): Promise<void> {
+    if (!email.trim() || !password.trim()) {
+      authError = "Enter an email and password.";
+      return;
+    }
+
+    authBusy = true;
+    authError = null;
+    try {
+      const { authorizator } = await getNscalcRpc();
+      const userData = await authorizator.LogIn(email.trim(), password);
+      authState = {
+        name: userData.name,
+        sessionId: userData.sessionId,
+        isAdmin: userData.isAdmin,
+      };
+      setCookie("sid", userData.sessionId);
+      password = "";
+    } catch (error) {
+      authState = null;
+      if (error instanceof nscalc.AuthorizationFailed) {
+        const reason = () => {
+          switch (error.reason) {
+            case nscalc.AuthorizationFailed_Reason.email_does_not_exist:
+              return "No account found with that email.";
+            case nscalc.AuthorizationFailed_Reason.incorrect_password:
+              return "Incorrect password.";
+            default:
+              return "Unknown error.";
+          }
+        };
+        authError = `Login failed: ${reason()}`;
+      } else {
+        authError = error instanceof Error ? error.message : "Login failed.";
+      }
+    } finally {
+      authBusy = false;
+    }
+  }
+
+  async function logOut(): Promise<void> {
+    const sessionId = authState?.sessionId ?? getCookie("sid");
+    authBusy = true;
+    authError = null;
+    try {
+      if (sessionId) {
+        const { authorizator } = await getNscalcRpc();
+        await authorizator.LogOut(sessionId);
+      }
+    } catch (error) {
+      authError = error instanceof Error ? error.message : "Logout failed.";
+    } finally {
+      setCookie("sid", null);
+      authState = null;
+      authBusy = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -43,17 +145,31 @@
           <p class="mt-3 text-sm leading-6 text-ocean-100/80 sm:text-base">The new shell keeps stories, measurements, and upload status readable on phones first, while leaving room for the calculator and solution library beside it.</p>
         </div>
 
-        <form class="panel-surface hairline grid w-full gap-3 rounded-3xl p-3 sm:grid-cols-2 lg:max-w-3xl lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end xl:max-w-184">
+        <form class="panel-surface hairline grid w-full gap-3 rounded-3xl p-3 sm:grid-cols-2 lg:max-w-3xl lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end xl:max-w-184" onsubmit={(event) => { event.preventDefault(); void logIn(); }}>
           <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-[0.2em] text-ocean-200/70">
             Email
-            <input class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="email" placeholder="grower@example.com" />
+            <input bind:value={email} class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="email" placeholder="grower@example.com" />
           </label>
           <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-[0.2em] text-ocean-200/70">
             Password
-            <input class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="password" placeholder="••••••••" />
+            <input bind:value={password} class="touch-target min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition focus:border-ocean-300 focus:bg-black/30" type="password" placeholder="••••••••" />
           </label>
-          <button type="button" class="touch-target rounded-2xl bg-ocean-400 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-ocean-300 lg:self-end">Log in</button>
-          <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 lg:self-end">Register</button>
+          <button type="submit" class="touch-target rounded-2xl bg-ocean-400 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-ocean-300 lg:self-end" disabled={authBusy}>{authBusy ? "Working..." : authState ? "Refresh login" : "Log in"}</button>
+          {#if authState}
+            <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 lg:self-end" onclick={() => void logOut()} disabled={authBusy}>Log out</button>
+          {:else}
+            <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 lg:self-end" disabled>Register</button>
+          {/if}
+          {#if authState || authError}
+            <div class="sm:col-span-2 lg:col-span-4">
+              {#if authState}
+                <p class="text-xs text-ocean-100/80">Signed in as {authState.name}{authState.isAdmin ? " • moderator controls enabled" : ""}.</p>
+              {/if}
+              {#if authError}
+                <p class="mt-1 text-xs text-rose-200">{authError}</p>
+              {/if}
+            </div>
+          {/if}
         </form>
       </div>
 
@@ -92,7 +208,7 @@
     <section class={`grid gap-4 ${currentView === "calculator" ? 'grid-cols-1' : '2xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:items-start'}`}>
       <div class={`panel-surface relative rounded-4xl p-4 sm:p-6 ${currentView === "journal" ? 'z-30' : ''}`}>
         {#if currentView === "journal"}
-          <Journal />
+          <Journal moderatorSessionId={authState?.sessionId ?? null} canModerate={authState?.isAdmin ?? false} moderatorName={authState?.name ?? null} />
         {:else if currentView === "calculator"}
           <Calculator />
         {:else if currentView === "solutions"}

@@ -20,6 +20,16 @@
     UploadTarget,
   } from "@rpc/grow_journal";
 
+  let {
+    moderatorSessionId = null,
+    canModerate = false,
+    moderatorName = null,
+  }: {
+    moderatorSessionId?: string | null;
+    canModerate?: boolean;
+    moderatorName?: string | null;
+  } = $props();
+
   type StageFilter = "all" | keyof typeof StoryStage;
   type ComposerKind = keyof typeof UpdateKind;
   type VisibilityOption = keyof typeof StoryVisibility;
@@ -93,6 +103,7 @@
   let loadingStory = $state(false);
   let loadingError = $state<string | null>(null);
   let creatingStory = $state(false);
+  let deletingStory = $state(false);
   let storyWatchState = $state<StoryWatchState>("idle");
   let storyWatchError = $state<string | null>(null);
   let submittingUpdate = $state(false);
@@ -113,6 +124,7 @@
   let activeStoryStream: StoryWatchHandle | null = null;
   let activeVideoMedia = $state<JournalMediaAsset | null>(null);
   let composerFileInput = $state<HTMLInputElement | null>(null);
+  const uploadRetryLimit = 6;
 
   const storyOverlayTop = $derived.by(() => {
     windowScrollY;
@@ -458,7 +470,7 @@
 
   async function uploadComposerFiles(update: StoryUpdate, files: File[]): Promise<string[]> {
     const uploadErrors: string[] = [];
-    const { journal, uploads } = await getJournalRpc();
+    const { journal } = await getJournalRpc();
 
     for (const file of files) {
       const descriptor = describeUploadFile(file);
@@ -468,7 +480,6 @@
       }
 
       let target: UploadTarget | null = null;
-      let writer: { write(value: Uint8Array): void; close(): void; abort(error_code?: number): void } | null = null;
 
       try {
         target = descriptor.kind === MediaKind.Image
@@ -476,35 +487,20 @@
           : await journal.CreateVideoUpload(update.story_id, update.id, file.name, descriptor.mimeType);
 
         registerLocalUpload(target, file, descriptor.mimeType);
-        writer = await uploads.UploadAsset(target.asset_id, target.upload_token);
-
-        for (let offset = 0; offset < file.size; offset += uploadChunkSize) {
-          const chunk = new Uint8Array(await file.slice(offset, offset + uploadChunkSize).arrayBuffer());
-          writer.write(chunk);
-          updateLocalUpload(target.asset_id, {
-            bytesSent: BigInt(Math.min(offset + chunk.byteLength, file.size)),
-            status: "Uploading",
-          });
-        }
-
-        writer.close();
+        await streamUploadWithRetry(target, file);
+        const { uploads } = await getJournalRpc();
         await uploads.FinishUpload(target.asset_id, target.upload_token);
         const attachedUpdate = await journal.AttachAsset(update.id, target.asset_id);
         applyStoryUpdate(attachedUpdate);
         clearLocalUpload(target.asset_id);
       } catch (error) {
-        if (writer) {
-          try {
-            writer.abort();
-          } catch {
-          }
-        }
         if (target) {
           updateLocalUpload(target.asset_id, {
             status: "Failed",
             errorMessage: formatError(error, `${file.name}: upload failed.`),
           });
           try {
+            const { uploads } = await getJournalRpc();
             await uploads.AbortUpload(target.asset_id, target.upload_token);
           } catch {
           }
@@ -514,6 +510,82 @@
     }
 
     return uploadErrors;
+  }
+
+  async function streamUploadWithRetry(target: UploadTarget, file: File): Promise<void> {
+    let offset = Number(localUploads.find((upload) => upload.assetId === target.asset_id)?.bytesSent ?? 0n);
+    let attempt = 0;
+
+    while (attempt < uploadRetryLimit) {
+      let writer: { write(value: Uint8Array): void; close(): void; abort(error_code?: number): void } | null = null;
+      try {
+        const { uploads } = await getJournalRpc();
+        writer = await uploads.UploadAsset(target.asset_id, target.upload_token);
+
+        for (; offset < file.size; offset += uploadChunkSize) {
+          const chunk = new Uint8Array(await file.slice(offset, offset + uploadChunkSize).arrayBuffer());
+          writer.write(chunk);
+          updateLocalUpload(target.asset_id, {
+            bytesSent: BigInt(Math.min(offset + chunk.byteLength, file.size)),
+            status: "Uploading",
+          });
+        }
+
+        writer.close();
+        return;
+      } catch (error) {
+        if (writer) {
+          try {
+            writer.abort();
+          } catch {
+          }
+        }
+
+        attempt += 1;
+        if (attempt >= uploadRetryLimit) {
+          throw error;
+        }
+
+        updateLocalUpload(target.asset_id, {
+          status: "Uploading",
+          errorMessage: `Stream interrupted. Retrying upload (${attempt}/${uploadRetryLimit - 1})...`,
+        });
+        await delay(Math.min(1000 * attempt, 4000));
+      }
+    }
+  }
+
+  async function deleteSelectedStory(): Promise<void> {
+    const activeStory = selectedStory;
+    if (!activeStory || !moderatorSessionId || !canModerate || deletingStory) {
+      return;
+    }
+
+    const confirmed = typeof window !== "undefined"
+      ? window.confirm(`Delete story \"${activeStory.title}\"? This removes its updates and media metadata.`)
+      : true;
+    if (!confirmed) {
+      return;
+    }
+
+    deletingStory = true;
+    loadingError = null;
+    lastActionMessage = null;
+
+    try {
+      const { journal } = await getJournalRpc();
+      const deletedId = activeStory.id;
+      await journal.DeleteStory(moderatorSessionId, activeStory.id);
+      const deletedTitle = activeStory.title;
+      clearSelectedStory();
+      stories = stories.filter((story) => story.id !== deletedId);
+      await refreshStoriesOnly();
+      lastActionMessage = `${deletedTitle} was deleted by ${moderatorName ?? "the moderator"}.`;
+    } catch (error) {
+      loadingError = formatError(error, "Could not delete the story.");
+    } finally {
+      deletingStory = false;
+    }
   }
 
   function handleComposerFiles(event: Event): void {
@@ -1066,6 +1138,10 @@
     }
     return fallback;
   }
+
+  function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 </script>
 
 <svelte:window bind:scrollY={windowScrollY} onkeydown={handleWindowKeydown} />
@@ -1218,7 +1294,14 @@
             <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300">Story modal</p>
             <p class="mt-1 text-sm text-ocean-100/75">{selectedStory.title} • {selectedUpdates.length} timeline entries</p>
           </div>
-          <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={clearSelectedStory}>Close</button>
+          <div class="flex items-center gap-2">
+            {#if canModerate && moderatorSessionId}
+              <button type="button" class="touch-target rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void deleteSelectedStory()} disabled={deletingStory}>
+                {deletingStory ? "Deleting..." : "Delete story"}
+              </button>
+            {/if}
+            <button type="button" class="touch-target rounded-2xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onclick={clearSelectedStory}>Close</button>
+          </div>
         </div>
 
         <div class="min-h-0 space-y-4 overflow-y-auto p-4 sm:p-5 xl:p-6">
@@ -1258,6 +1341,13 @@
                       <p class="mt-2 text-xs text-rose-200">{storyWatchError}</p>
                     {/if}
                   </div>
+                  {#if canModerate}
+                    <div class="rounded-3xl border border-white/15 bg-black/34 p-4 text-sm text-white/85">
+                      <p class="text-xs uppercase tracking-[0.22em] text-white/65">Moderator</p>
+                      <p class="mt-2 font-semibold">{moderatorName ?? "Moderator"}</p>
+                      <p class="mt-1 text-xs leading-5 text-white/70">Delete removes the story, its timeline entries, and journal media metadata. Published files are cleaned up on the server.</p>
+                    </div>
+                  {/if}
                 </div>
               </div>
             </div>
