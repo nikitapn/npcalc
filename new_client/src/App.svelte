@@ -419,7 +419,7 @@
         {#if currentView === "journal"}
           <Journal moderatorSessionId={authState?.sessionId ?? null} canModerate={authState?.isAdmin ?? false} moderatorName={authState?.name ?? null} />
         {:else if currentView === "calculator"}
-          <Calculator />
+          <Calculator currentUser={authState?.registeredUser ?? null} />
         {:else if currentView === "solutions"}
           <Solutions currentUserName={authState?.name ?? null} currentUser={authState?.registeredUser ?? null} />
         {:else if currentView === "fertilizers"}

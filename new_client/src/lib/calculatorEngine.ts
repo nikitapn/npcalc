@@ -117,19 +117,19 @@ export function computeElementsFromDoses(fertilizers: FertilizerInput[], doses: 
     const explicitNo3 = fertilizer.elements.NO3 ?? 0;
     const explicitNh4 = fertilizer.elements.NH4 ?? 0;
     if (explicitNo3 > 0 || explicitNh4 > 0) {
-      result.NO3 += explicitNo3 * dose;
-      result.NH4 += explicitNh4 * dose;
+      result.NO3 += fertilizerPercentageToPpm(explicitNo3) * dose;
+      result.NH4 += fertilizerPercentageToPpm(explicitNh4) * dose;
     } else {
       const nitrogenTotal = fertilizer.elements.N ?? 0;
       const nitrogenSplit = inferNitrogenSplit(fertilizer.name);
-      result.NO3 += nitrogenTotal * dose * nitrogenSplit.no3;
-      result.NH4 += nitrogenTotal * dose * nitrogenSplit.nh4;
+      result.NO3 += fertilizerPercentageToPpm(nitrogenTotal) * dose * nitrogenSplit.no3;
+      result.NH4 += fertilizerPercentageToPpm(nitrogenTotal) * dose * nitrogenSplit.nh4;
     }
-    result.P += (fertilizer.elements.P ?? 0) * dose;
-    result.K += (fertilizer.elements.K ?? 0) * dose;
-    result.Ca += (fertilizer.elements.Ca ?? 0) * dose;
-    result.Mg += (fertilizer.elements.Mg ?? 0) * dose;
-    result.S += (fertilizer.elements.S ?? 0) * dose;
+    result.P += fertilizerPercentageToPpm(fertilizer.elements.P ?? 0) * dose;
+    result.K += fertilizerPercentageToPpm(fertilizer.elements.K ?? 0) * dose;
+    result.Ca += fertilizerPercentageToPpm(fertilizer.elements.Ca ?? 0) * dose;
+    result.Mg += fertilizerPercentageToPpm(fertilizer.elements.Mg ?? 0) * dose;
+    result.S += fertilizerPercentageToPpm(fertilizer.elements.S ?? 0) * dose;
   }
 
   return result;
@@ -195,23 +195,27 @@ function fertilizerContribution(fertilizer: FertilizerInput, key: ElementKey): n
   switch (key) {
     case "NO3":
       if ((fertilizer.elements.NO3 ?? 0) > 0 || (fertilizer.elements.NH4 ?? 0) > 0) {
-        return fertilizer.elements.NO3 ?? 0;
+        return fertilizerPercentageToPpm(fertilizer.elements.NO3 ?? 0);
       }
-      return (fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).no3;
+      return fertilizerPercentageToPpm(fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).no3;
     case "NH4":
       if ((fertilizer.elements.NO3 ?? 0) > 0 || (fertilizer.elements.NH4 ?? 0) > 0) {
-        return fertilizer.elements.NH4 ?? 0;
+        return fertilizerPercentageToPpm(fertilizer.elements.NH4 ?? 0);
       }
-      return (fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).nh4;
+      return fertilizerPercentageToPpm(fertilizer.elements.N ?? 0) * inferNitrogenSplit(fertilizer.name).nh4;
     case "P":
     case "K":
     case "Ca":
     case "Mg":
     case "S":
-      return fertilizer.elements[key] ?? 0;
+      return fertilizerPercentageToPpm(fertilizer.elements[key] ?? 0);
     default:
       return 0;
   }
+}
+
+function fertilizerPercentageToPpm(percentage: number): number {
+  return percentage * 10;
 }
 
 function inferNitrogenSplit(name: string): { no3: number; nh4: number } {
