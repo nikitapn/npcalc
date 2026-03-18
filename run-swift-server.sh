@@ -11,10 +11,14 @@ set -e
 ROOT_DIR=$(dirname $(readlink -e ${BASH_SOURCE[0]}))
 DOCKER_IMAGE="nscalc-builder:latest"
 BUILD_CONFIG="release"
-
-# Read the hostname and port from public/host.json if present, else use defaults
 HOSTNAME_ARG="localhost"
 PORT_ARG="8443"
+ENABLE_HTTP3=1
+USE_SSL=1
+PUBLIC_KEY_ARG="/app/certs/out/localhost.crt"
+PRIVATE_KEY_ARG="/app/certs/out/localhost.key"
+DH_PARAMS_ARG=""
+
 HOST_JSON="$ROOT_DIR/client/public/host.json"
 if [ -f "$HOST_JSON" ]; then
     _host=$(python3 -c "import json,sys; d=json.load(open('$HOST_JSON')); print(d.get('hostname','localhost'))" 2>/dev/null || true)
@@ -23,10 +27,58 @@ if [ -f "$HOST_JSON" ]; then
     [ -n "$_port" ] && PORT_ARG=$_port
 fi
 
-for arg in "$@"; do
-    case $arg in
-        --debug|debug) BUILD_CONFIG="debug" ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --debug|debug)
+            BUILD_CONFIG="debug"
+            ;;
+        --hostname)
+            HOSTNAME_ARG="$2"
+            shift
+            ;;
+        --port)
+            PORT_ARG="$2"
+            shift
+            ;;
+        --public-key)
+            PUBLIC_KEY_ARG="$2"
+            shift
+            ;;
+        --private-key)
+            PRIVATE_KEY_ARG="$2"
+            shift
+            ;;
+        --dh-params)
+            DH_PARAMS_ARG="$2"
+            shift
+            ;;
+        --disable-http3)
+            ENABLE_HTTP3=0
+            ;;
+        --disable-ssl)
+            USE_SSL=0
+            ;;
+        --help)
+            cat <<'EOF'
+Usage: ./run-swift-server.sh [options]
+
+  --debug              Run the server under gdb inside Docker
+  --hostname <value>   Public hostname for host.json
+  --port <value>       HTTP/WS port to expose
+  --public-key <path>  Certificate path inside the container
+  --private-key <path> Private key path inside the container
+  --dh-params <path>   Optional DH params path inside the container
+  --disable-http3      Disable HTTP/3
+  --disable-ssl        Disable TLS
+EOF
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
     esac
+    shift
 done
 
 BINARY="/app/swift_server/.build/$BUILD_CONFIG/NScalcServer"
@@ -74,9 +126,21 @@ DOCKER_CMD+=(
     --port     "$PORT_ARG"
     --http-dir /app/runtime/www
     --data-dir /app/sample_data
-    --use-ssl  1
-    --public-key  /app/certs/out/localhost.crt
-    --private-key /app/certs/out/localhost.key
+    --use-ssl  "$USE_SSL"
 )
+
+if [ "$USE_SSL" = "1" ]; then
+    DOCKER_CMD+=(
+        --public-key "$PUBLIC_KEY_ARG"
+        --private-key "$PRIVATE_KEY_ARG"
+    )
+    if [ -n "$DH_PARAMS_ARG" ]; then
+        DOCKER_CMD+=(--dh-params "$DH_PARAMS_ARG")
+    fi
+fi
+
+if [ "$ENABLE_HTTP3" = "1" ]; then
+    DOCKER_CMD+=(--enable-http3)
+fi
 
 exec "${DOCKER_CMD[@]}"

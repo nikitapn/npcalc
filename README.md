@@ -198,6 +198,37 @@ The project includes Docker support for containerized deployment:
 ./03_deploy.sh
 ```
 
+### Swift Production Deployment
+
+The active web stack is the Swift server plus the built `new_client` frontend. For a VPS deployment, use the production bundle flow instead of the older C++ tarball scripts:
+
+```bash
+# Build a release bundle locally
+./package_prod.sh
+
+# Upload, build the official Swift slim runtime image on the server, and restart the container
+./deploy.sh \
+	--ssh debian@your-vps \
+	--hostname calc.example.com \
+	--cert-dir /etc/letsencrypt/live/calc.example.com \
+	--dh-params /certs/ssl-dhparams.pem \
+	--port 443
+```
+
+The production image is based on `swift:6.2.4-slim`. The deploy flow mounts persistent state from `/opt/nscalc/data` on the VPS and mounts the certificate directory read-only at `/certs` inside the container. The Swift server now accepts runtime flags and matching env vars for:
+
+```bash
+--hostname <value>
+--port <value>
+--http-dir <path>
+--data-dir <path>
+--use-ssl <0|1>
+--enable-http3
+--public-key <path>
+--private-key <path>
+--dh-params <path>
+```
+
 ## Security Features
 
 - **TLS Encryption**: All communications encrypted with TLS 1.2+

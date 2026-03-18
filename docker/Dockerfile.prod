@@ -1,0 +1,35 @@
+FROM swift:6.2.4-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --home-dir /home/nscalc --shell /usr/sbin/nologin nscalc
+RUN mkdir -p /data && chmod 777 /data
+
+COPY bundle/runtime-libs/nprpc /opt/nprpc
+COPY bundle/runtime-libs/boost /opt/boost
+COPY bundle/runtime-libs/system/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
+COPY bundle/app/NScalcServer /app/NScalcServer
+COPY bundle/app/www /app/www
+COPY bundle/seed /app/seed
+COPY docker/entrypoint.prod.sh /usr/local/bin/nscalc-entrypoint
+
+RUN chmod +x /app/NScalcServer /usr/local/bin/nscalc-entrypoint && \
+    chmod -R a+rX /app && \
+    chmod -R a+rwX /app/www && \
+    chown -R nscalc:nscalc /app /home/nscalc
+
+ENV LD_LIBRARY_PATH=/opt/nprpc/lib:/opt/boost/lib:/usr/lib/swift/linux
+ENV NSCALC_HTTP_DIR=/app/www
+ENV NSCALC_DATA_DIR=/data
+ENV NSCALC_USE_SSL=1
+ENV NSCALC_ENABLE_HTTP3=1
+
+WORKDIR /app
+USER nscalc
+
+EXPOSE 8443/tcp 8443/udp
+
+ENTRYPOINT ["/usr/local/bin/nscalc-entrypoint"]
