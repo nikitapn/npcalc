@@ -85,6 +85,30 @@
     return Boolean(currentUser && currentUserName && currentUserName === fertilizer.author);
   }
 
+  function bottleLabel(bottle: nscalc.FertilizerBottle | null | undefined, formula?: string | null): string {
+    return bottle === nscalc.FertilizerBottle.A ? "Tank A" : bottle === nscalc.FertilizerBottle.B ? "Tank B" : "Tank C";
+  }
+
+  function bottleBadgeClass(bottle: nscalc.FertilizerBottle | null | undefined, formula?: string | null): string {
+    if (bottle === nscalc.FertilizerBottle.B) {
+      return "border-emerald-300/30 bg-emerald-400/14 text-emerald-100";
+    }
+    if (bottle === nscalc.FertilizerBottle.C) {
+      return "border-rose-300/30 bg-rose-400/14 text-rose-100";
+    }
+    return "border-sand-200/35 bg-sand-200/12 text-sand-50";
+  }
+
+  function fertilizerCardClass(bottle: nscalc.FertilizerBottle | null | undefined, formula?: string | null): string {
+    if (bottle === nscalc.FertilizerBottle.B) {
+      return "border-emerald-300/28 bg-[linear-gradient(180deg,rgba(8,79,61,0.92),rgba(6,46,41,0.96))]";
+    }
+    if (bottle === nscalc.FertilizerBottle.C) {
+      return "border-rose-300/28 bg-[linear-gradient(180deg,rgba(108,24,52,0.9),rgba(63,15,33,0.96))]";
+    }
+    return "border-sand-200/24 bg-[linear-gradient(180deg,rgba(74,55,26,0.78),rgba(38,28,18,0.92))]";
+  }
+
   function formulaDraftFor(fertilizer: FertilizerCardData): string {
     return formulaDraftById[fertilizer.id] ?? fertilizer.formula;
   }
@@ -442,14 +466,17 @@
       getKey={(fertilizer) => (fertilizer as FertilizerCardData).id}
     >
       {#snippet children(fertilizer)}
-        <article class="panel-surface hairline h-full rounded-[1.75rem] p-4">
+        <article class={`hairline h-full rounded-[1.75rem] border p-4 ${fertilizerCardClass(fertilizer.bottle, fertilizer.formula)}`}>
           <div class="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
             <div class="min-w-0">
               <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Product card</p>
               <h3 class="mt-1 text-lg font-semibold text-white">{fertilizer.name}</h3>
               <p class="mt-1 text-sm text-ocean-100/70">by {fertilizer.author}</p>
             </div>
-            <span class="rounded-full border border-sand-200/25 bg-sand-200/10 px-3 py-1 text-xs font-medium text-sand-100">${fertilizer.cost}</span>
+            <div class="flex flex-col items-end gap-2">
+              <span class={`rounded-full border px-3 py-1 text-xs font-medium ${bottleBadgeClass(fertilizer.bottle, fertilizer.formula)}`}>{bottleLabel(fertilizer.bottle, fertilizer.formula)}</span>
+              <span class="rounded-full border border-white/15 bg-white/8 px-3 py-1 text-xs font-medium text-white">${fertilizer.cost}</span>
+            </div>
           </div>
 
           <div class="mt-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">

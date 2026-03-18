@@ -70,8 +70,8 @@ struct FertilizerRecord {
             name:     name,
             formula:  formula,
             elements: elements,
-            bottle:   FertilizerBottle(rawValue: UInt8(bottle)) ?? .BOTTLE_A,
-            type:     FertilizerType(rawValue: UInt8(fertilizerType)) ?? .DRY,
+            bottle:   FertilizerBottle(rawValue: UInt8(bottle)) ?? .A,
+            type:     FertilizerType(rawValue: UInt8(fertilizerType)) ?? .Dry,
             density:  density,
             cost:     cost
         )

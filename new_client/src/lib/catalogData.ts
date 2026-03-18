@@ -1,4 +1,4 @@
-import type { Fertilizer, Solution } from "@rpc/nscalc";
+import type { Fertilizer, Solution, FertilizerBottle } from "@rpc/nscalc";
 import { computeSolutionEc, computeSolutionRatio, solutionElementsFromRecord, type ElementKey } from "./calculatorEngine";
 
 export type SolutionCardData = {
@@ -24,6 +24,7 @@ export type FertilizerCardData = {
   author: string;
   cost: string;
   formula: string;
+  bottle: FertilizerBottle;
   elements: Record<string, string>;
 };
 
@@ -94,6 +95,7 @@ export function fertilizerCardFromRpc(fertilizer: Fertilizer): FertilizerCardDat
     author: fertilizer.userName,
     cost: fertilizer.cost.toFixed(2),
     formula: fertilizer.formula,
+    bottle: fertilizer.bottle,
     elements: Object.fromEntries(
       fertilizerElementLabels
         .filter((label) => Number(fertilizerElements[label].toFixed(2)) !== 0)

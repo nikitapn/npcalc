@@ -33,6 +33,12 @@
     stop(): void;
   };
 
+  type SnapshotCard = {
+    label: string;
+    value: string;
+    detail: string;
+  };
+
   const navItems: Array<{ id: View; label: string; blurb: string }> = [
     { id: "journal", label: "Journal", blurb: "Capture crop progress as a story feed." },
     { id: "calculator", label: "Calculator", blurb: "Mix recipes fast on touch screens." },
@@ -67,6 +73,144 @@
   const eventIsLive = $derived(isSiteEventActive(eventConfig));
   const eventWindowLabel = $derived(describeSiteEventWindow(eventConfig));
   const eventDraftDirty = $derived(JSON.stringify(eventDraft) !== JSON.stringify(eventConfig));
+  const accountLabel = $derived(authState ? authState.name : "Guest");
+  const accessLabel = $derived(
+    authState?.isAdmin
+      ? "Admin"
+      : authState
+        ? "Signed in"
+        : "Guest",
+  );
+  const eventStatusLabel = $derived(
+    eventLoading
+      ? "Loading"
+      : eventIsLive
+        ? "Live now"
+        : eventConfig.enabled
+          ? "Scheduled"
+          : "Inactive",
+  );
+  const snapshotCards = $derived.by<SnapshotCard[]>(() => {
+    switch (currentView) {
+      case "journal":
+        return [
+          {
+            label: "Account",
+            value: accountLabel,
+            detail: authState?.isAdmin ? "Moderator tools available in the journal." : authState ? "Story actions use your signed-in account." : "Browsing stories without account-specific tools.",
+          },
+          {
+            label: "Journal mode",
+            value: authState?.isAdmin ? "Moderation" : "Reader",
+            detail: authState?.isAdmin ? "You can manage the shared event panel and journal moderation flows." : "Stories, uploads, and fullscreen media stay optimized for mobile review.",
+          },
+          {
+            label: "Shared event",
+            value: eventStatusLabel,
+            detail: eventLoading ? "Refreshing the shared overlay state from the server." : `${getSiteEventVariantLabel(eventConfig)} • ${eventWindowLabel}`,
+          },
+          {
+            label: "Event draft",
+            value: eventDraftDirty ? "Unsaved" : "Synced",
+            detail: authState?.isAdmin ? (eventDraftDirty ? "Admin changes are staged locally until you save them." : "Server config and local draft are aligned.") : "Only admins can edit the shared event configuration.",
+          },
+        ];
+      case "solutions":
+        return [
+          {
+            label: "Account",
+            value: accountLabel,
+            detail: authState ? "Your solution list can include personal and shared targets." : "Guest mode can inspect the shared solution library.",
+          },
+          {
+            label: "Library access",
+            value: authState ? "Personal + shared" : "Shared only",
+            detail: authState ? "Save, update, and delete your own nutrient targets." : "Sign in to create or maintain a personal solution library.",
+          },
+          {
+            label: "Primary use",
+            value: "Target recipes",
+            detail: "Reusable nutrient profiles feed the calculator and journal workflows.",
+          },
+          {
+            label: "Workflow",
+            value: authState ? "Editable" : "Read-only",
+            detail: authState ? "Use this space to curate mixes you return to often." : "Browse targets now, then sign in if you want to keep your own set.",
+          },
+        ];
+      case "fertilizers":
+        return [
+          {
+            label: "Account",
+            value: accountLabel,
+            detail: authState ? "Your fertilizer list can combine personal and shared products." : "Guest mode can inspect the shared fertilizer catalog.",
+          },
+          {
+            label: "Catalog access",
+            value: authState ? "Personal + shared" : "Shared only",
+            detail: authState ? "Save the products you actually stock and keep their analyses current." : "Sign in to maintain a personal fertilizer catalog.",
+          },
+          {
+            label: "Primary use",
+            value: "Element ratios",
+            detail: "Product analyses here feed the calculator matrix and solver.",
+          },
+          {
+            label: "Workflow",
+            value: authState ? "Editable" : "Read-only",
+            detail: authState ? "Adjust personal entries without affecting the shared reference list." : "Browse the reference list now, then sign in to save your own products.",
+          },
+        ];
+      case "chat":
+        return [
+          {
+            label: "Account",
+            value: accountLabel,
+            detail: authState ? "A signed-in session is already available for future collaboration features." : "Guest browsing is active until realtime chat lands.",
+          },
+          {
+            label: "Status",
+            value: "Planned",
+            detail: "This area is reserved for realtime collaboration rather than static notes.",
+          },
+          {
+            label: "Context",
+            value: accessLabel,
+            detail: authState?.isAdmin ? "Admin context can later cover support and moderation workflows." : "User identity is ready to flow into future chat sessions.",
+          },
+          {
+            label: "Next step",
+            value: "Realtime sync",
+            detail: "The useful outcome here is shared crop discussion, not another static info page.",
+          },
+        ];
+      case "about":
+        return [
+          {
+            label: "Current view",
+            value: activeItem.label,
+            detail: activeItem.blurb,
+          },
+          {
+            label: "Account",
+            value: accountLabel,
+            detail: authState?.isAdmin ? "Admin tools are enabled for shared event configuration." : authState ? "Signed-in flows are active across the app." : "Guest mode still exposes shared data and guest calculations.",
+          },
+          {
+            label: "Experience",
+            value: "Mobile-first",
+            detail: "The shell prioritizes readable touch workflows for journal, calculator, and libraries.",
+          },
+          {
+            label: "Shared event",
+            value: eventStatusLabel,
+            detail: eventLoading ? "Refreshing event state from the server." : `${getSiteEventVariantLabel(eventConfig)} • ${eventWindowLabel}`,
+          },
+        ];
+      default:
+        return [];
+    }
+  });
 
   onMount(() => {
     let refreshTimer = window.setInterval(() => {
@@ -605,24 +749,20 @@
 
           {#if currentView !== "calculator"}
             <section class="panel-surface rounded-4xl p-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Data snapshot</p>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">{activeItem.label} snapshot</p>
+                  <p class="mt-2 text-sm leading-6 text-ocean-100/72">{activeItem.blurb}</p>
+                </div>
+              </div>
               <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-ocean-100/70">Journal</p>
-                  <p class="mt-1 text-lg font-semibold text-white">RPC-backed</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-ocean-100/70">Transport</p>
-                  <p class="mt-1 text-lg font-semibold text-white">NPRPC</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-ocean-100/70">Solutions</p>
-                  <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
-                </div>
-                <div class="rounded-3xl bg-black/20 p-4">
-                  <p class="text-ocean-100/70">Fertilizers</p>
-                  <p class="mt-1 text-lg font-semibold text-white">Cursor-paged</p>
-                </div>
+                {#each snapshotCards as card}
+                  <div class="rounded-3xl bg-black/20 p-4">
+                    <p class="text-ocean-100/70">{card.label}</p>
+                    <p class="mt-1 text-lg font-semibold text-white">{card.value}</p>
+                    <p class="mt-2 text-xs leading-5 text-ocean-100/68">{card.detail}</p>
+                  </div>
+                {/each}
               </div>
             </section>
 

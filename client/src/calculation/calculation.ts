@@ -474,9 +474,9 @@ export class Calculation extends TableItem {
 
     for (let i = 0; i < mixs.length; ++i) {
       let s = "";
-      if (mixs[i].type == nscalc.FertilizerType.DRY) {
+      if (mixs[i].type == nscalc.FertilizerType.Dry) {
         s = ((X[i] / 1000.0) * this.volume.mx_value).toFixed(2) + " g";
-      } else if (mixs[i].type == nscalc.FertilizerType.LIQUID) {
+      } else if (mixs[i].type == nscalc.FertilizerType.Liquid) {
         s = (X[i] * this.volume.mx_value / mixs[i].density).toFixed(2) + " ml";
       } else {
         let k = 1.0 / mixs[i].density;

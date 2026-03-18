@@ -20,17 +20,9 @@ message Solution {
   elements: f64[TARGET_ELEMENT_COUNT];
 }
 
-enum FertilizerBottle: u8 {
-  BOTTLE_A,
-  BOTTLE_B,
-  BOTTLE_C
-};
+enum FertilizerBottle: u8 { A, B, C };
 
-enum FertilizerType: u8 {
-  DRY,
-  LIQUID,
-  SOLUTION,
-};
+enum FertilizerType: u8 { Dry, Liquid, Solution };
 
 message Fertilizer {
   id: u32;

@@ -66,6 +66,12 @@
     detail: string;
     alt: string;
   };
+  type GalleryMediaItem = {
+    media: JournalMediaAsset;
+    title: string;
+    detail: string;
+    alt: string;
+  };
   type StoryWatchHandle = {
     writer: { close(): void };
     reader: AsyncIterable<StoryStreamServerEvent> & { cancel(): void };
@@ -123,22 +129,15 @@
   let createStoryVisibility = $state<VisibilityOption>("Unlisted");
   let createStorySolutionId = $state("42");
   let lastActionMessage = $state<string | null>(null);
-  let journalRoot = $state<HTMLElement | null>(null);
-  let windowScrollY = $state(0);
   let activeStoryRequest = 0;
   let activeWatchGeneration = 0;
   let activeStoryStream: StoryWatchHandle | null = null;
   let activeImageViewer = $state<ActiveImageViewer | null>(null);
-  let activeVideoMedia = $state<JournalMediaAsset | null>(null);
+  let activeGalleryIndex = $state<number | null>(null);
   let composerPanel = $state<HTMLElement | null>(null);
   let composerBodyInput = $state<HTMLTextAreaElement | null>(null);
   let composerFileInput = $state<HTMLInputElement | null>(null);
   const uploadRetryLimit = 6;
-
-  const storyOverlayTop = $derived.by(() => {
-    windowScrollY;
-    return 24 - (journalRoot?.getBoundingClientRect().top ?? 0);
-  });
 
   const filteredStories = $derived.by(() => {
     const query = search.trim().toLowerCase();
@@ -225,6 +224,26 @@
 
   const hasMixedComposerMedia = $derived.by(() => {
     return inferredComposerKinds.length > 1;
+  });
+
+  const galleryMediaItems = $derived.by<GalleryMediaItem[]>(() => {
+    return selectedUpdates.flatMap((update) =>
+      update.media
+        .filter((media) => (media.kind === MediaKind.Image && Boolean(media.image_url)) || canPlayVideo(media))
+        .map((media) => ({
+          media,
+          title: media.original_filename,
+          detail: `${formatBytes(media.byte_size)} • ${media.mime_type}${media.duration_ms ? ` • ${Math.round(Number(media.duration_ms) / 1000)}s` : ""}`,
+          alt: mediaLabel(media.original_filename, media.kind),
+        })),
+    );
+  });
+
+  const activeGalleryItem = $derived.by(() => {
+    if (activeGalleryIndex === null) {
+      return null;
+    }
+    return galleryMediaItems[activeGalleryIndex] ?? null;
   });
 
   const effectiveComposerKind = $derived.by<ComposerKind>(() => {
@@ -326,7 +345,7 @@
     localUploads = [];
     loadingStory = false;
     activeImageViewer = null;
-    activeVideoMedia = null;
+    activeGalleryIndex = null;
     stopStoryWatch();
   }
 
@@ -335,8 +354,16 @@
       activeImageViewer = null;
       return;
     }
-    if (event.key === "Escape" && activeVideoMedia) {
-      activeVideoMedia = null;
+    if (event.key === "Escape" && activeGalleryIndex !== null) {
+      activeGalleryIndex = null;
+      return;
+    }
+    if (activeGalleryIndex !== null && event.key === "ArrowRight") {
+      stepGallery(1);
+      return;
+    }
+    if (activeGalleryIndex !== null && event.key === "ArrowLeft") {
+      stepGallery(-1);
       return;
     }
     if (event.key === "Escape" && selectedStory) {
@@ -363,15 +390,24 @@
     return media.kind === MediaKind.Video && media.status === MediaStatus.Ready && Boolean(media.dash_manifest_url);
   }
 
-  function openVideoPlayer(media: JournalMediaAsset): void {
-    if (!canPlayVideo(media)) {
-      return;
-    }
-    activeVideoMedia = media;
-  }
-
   function openImageViewer(image: ActiveImageViewer): void {
     activeImageViewer = image;
+  }
+
+  function openMediaGallery(media: JournalMediaAsset): void {
+    const nextIndex = galleryMediaItems.findIndex((item) => item.media.id === media.id);
+    if (nextIndex === -1) {
+      return;
+    }
+    activeGalleryIndex = nextIndex;
+  }
+
+  function stepGallery(offset: number): void {
+    const itemCount = galleryMediaItems.length;
+    if (itemCount <= 1 || activeGalleryIndex === null) {
+      return;
+    }
+    activeGalleryIndex = (activeGalleryIndex + offset + itemCount) % itemCount;
   }
 
   function openCoverImage(story: StoryDetail): void {
@@ -1205,9 +1241,9 @@
   }
 </script>
 
-<svelte:window bind:scrollY={windowScrollY} onkeydown={handleWindowKeydown} />
+<svelte:window onkeydown={handleWindowKeydown} />
 
-<section bind:this={journalRoot} class="relative space-y-5">
+<section class="relative space-y-5">
   <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
     <div class="max-w-3xl">
       <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Grow journal</p>
@@ -1347,9 +1383,9 @@
   </div>
 
   {#if selectedStory}
-    <div class="fixed inset-0 z-30 bg-ocean-950/28 backdrop-blur-[1px]" aria-hidden="true"></div>
-    <div class="pointer-events-none absolute inset-x-0 z-40 flex items-start justify-center px-4 py-0 sm:px-6" style={`top:${storyOverlayTop}px;`}>
-      <div class="pointer-events-auto flex max-h-[calc(100vh-3rem)] w-full max-w-7xl flex-col overflow-hidden rounded-4xl border border-white/12 bg-ocean-950/98 shadow-[0_28px_90px_rgba(0,0,0,0.5)] sm:max-h-[calc(100vh-5rem)]">
+    <div use:portalToBody class="fixed inset-0 z-120 overflow-y-auto bg-black/72 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) clearSelectedStory(); }}>
+      <div class="flex min-h-full items-stretch justify-center">
+      <div class="flex max-h-[calc(100vh-1.5rem)] w-full max-w-[min(96rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-4xl border border-white/12 bg-ocean-950/98 shadow-[0_28px_90px_rgba(0,0,0,0.5)] sm:max-h-[calc(100vh-3rem)] sm:max-w-[min(96rem,calc(100vw-3rem))]" role="dialog" aria-modal="true" aria-label={`Story details for ${selectedStory.title}`}>
         <div class="z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-ocean-950 px-5 py-4 backdrop-blur xl:px-6">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300">Story modal</p>
@@ -1484,11 +1520,7 @@
                               type="button"
                               class={`absolute inset-0 block h-full w-full ${media.kind === MediaKind.Image && media.image_url ? 'cursor-zoom-in' : canPlayVideo(media) ? 'cursor-pointer' : 'cursor-default'}`}
                               onclick={() => {
-                                if (media.kind === MediaKind.Image) {
-                                  openMediaImage(media);
-                                  return;
-                                }
-                                openVideoPlayer(media);
+                                openMediaGallery(media);
                               }}
                               disabled={media.kind === MediaKind.Image ? !media.image_url : !canPlayVideo(media)}
                               aria-label={media.kind === MediaKind.Image ? `Open ${media.original_filename} full screen` : `Play ${media.original_filename}`}
@@ -1506,14 +1538,14 @@
                             {#if media.kind === MediaKind.Image && media.image_url}
                               <div class="flex items-end justify-between gap-3">
                                 <p class="max-w-48 text-sm font-medium text-white/82">Tap the preview to inspect the full image without leaving the story timeline.</p>
-                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openMediaImage(media)}>
+                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openMediaGallery(media)}>
                                   Open image
                                 </button>
                               </div>
                             {:else if canPlayVideo(media)}
                               <div class="flex items-end justify-between gap-3">
                                 <p class="max-w-48 text-sm font-medium text-white/82">Adaptive DASH is ready for playback.</p>
-                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openVideoPlayer(media)}>
+                                <button type="button" class="rounded-full bg-white/14 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20" onclick={() => openMediaGallery(media)}>
                                   Play video
                                 </button>
                               </div>
@@ -1567,35 +1599,56 @@
                 {/if}
               </section>
 
-              <section bind:this={composerPanel} class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Story direction</p>
+                <div class="mt-4 flex flex-wrap gap-2 text-sm text-ocean-100/80">
+                  {#each storyDirection as stat}
+                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{stat}</span>
+                  {/each}
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <section bind:this={composerPanel} class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Quick compose</p>
                 <p class="mt-3 text-sm leading-6 text-ocean-100/72">Posting creates the update first, then image and video files stream in chunks through the upload service and attach to that update. Text is optional when media is attached.</p>
-                <div class="mt-4 space-y-3">
-                <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
-                  Entry type
-                  <select bind:value={composerKind} disabled={composerFiles.length > 0} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300 disabled:cursor-not-allowed disabled:opacity-60">
-                    {#each composerKinds as kind}
-                      <option value={kind}>{kind}</option>
-                    {/each}
-                  </select>
-                  {#if composerFiles.length > 0}
-                    <p class="text-[11px] font-medium normal-case tracking-normal text-ocean-100/65">
-                      {#if hasMixedComposerMedia}
-                        Mixed media will be split into separate PhotoSet and Video updates.
-                      {:else}
-                        Auto-set to {effectiveComposerKind} from the attached media.
-                      {/if}
-                    </p>
-                  {/if}
-                </label>
+              </div>
+              <p class="text-xs uppercase tracking-[0.18em] text-ocean-200/60">Click outside, press Esc, or use Close to dismiss the story.</p>
+            </div>
+            <div class="mt-4 grid gap-4 xl:grid-cols-[14rem_minmax(0,1fr)_minmax(18rem,0.9fr)]">
+              <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
+                Entry type
+                <select bind:value={composerKind} disabled={composerFiles.length > 0} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300 disabled:cursor-not-allowed disabled:opacity-60">
+                  {#each composerKinds as kind}
+                    <option value={kind}>{kind}</option>
+                  {/each}
+                </select>
+                {#if composerFiles.length > 0}
+                  <p class="text-[11px] font-medium normal-case tracking-normal text-ocean-100/65">
+                    {#if hasMixedComposerMedia}
+                      Mixed media will be split into separate PhotoSet and Video updates.
+                    {:else}
+                      Auto-set to {effectiveComposerKind} from the attached media.
+                    {/if}
+                  </p>
+                {/if}
+              </label>
+
+              <div class="space-y-3">
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Title
                   <input bind:value={composerTitle} class="touch-target rounded-2xl border border-white/10 bg-black/20 px-4 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300" />
                 </label>
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Body
-                  <textarea bind:this={composerBodyInput} bind:value={composerBody} class="min-h-32 rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300" placeholder="Optional if you are only attaching media."></textarea>
+                  <textarea bind:this={composerBodyInput} bind:value={composerBody} class="min-h-36 rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-normal tracking-normal text-white outline-none focus:border-ocean-300" placeholder="Optional if you are only attaching media."></textarea>
                 </label>
+              </div>
+
+              <div class="space-y-3">
                 <label class="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-ocean-200/75">
                   Attach media
                   <input bind:this={composerFileInput} type="file" multiple accept="image/*,video/*" class="block w-full cursor-pointer rounded-2xl border border-dashed border-white/15 bg-black/20 px-4 py-3 text-sm font-normal normal-case tracking-normal text-ocean-100 file:mr-4 file:rounded-xl file:border-0 file:bg-sand-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ocean-950" onchange={handleComposerFiles} />
@@ -1613,42 +1666,55 @@
                     {/each}
                   </div>
                 {/if}
-                  <button type="button" class="touch-target w-full rounded-2xl bg-sand-200 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-sand-100 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void submitUpdate()} disabled={submittingUpdate || !canSubmitUpdate}>{submittingUpdate ? "Posting..." : hasMixedComposerMedia ? "Post split media updates" : composerFiles.length > 0 ? `Post ${effectiveComposerKind} update and upload media` : `Post ${effectiveComposerKind} RPC update`}</button>
-                </div>
-              </section>
-
-              <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Story direction</p>
-                <div class="mt-4 flex flex-wrap gap-2 text-sm text-ocean-100/80">
-                  {#each storyDirection as stat}
-                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{stat}</span>
-                  {/each}
-                </div>
-              </section>
-            </aside>
-          </div>
+                <button type="button" class="touch-target w-full rounded-2xl bg-sand-200 px-4 text-sm font-semibold text-ocean-950 transition hover:bg-sand-100 disabled:cursor-not-allowed disabled:opacity-60" onclick={() => void submitUpdate()} disabled={submittingUpdate || !canSubmitUpdate}>{submittingUpdate ? "Posting..." : hasMixedComposerMedia ? "Post split media updates" : composerFiles.length > 0 ? `Post ${effectiveComposerKind} update and upload media` : `Post ${effectiveComposerKind} RPC update`}</button>
+              </div>
+            </div>
+          </section>
         </div>
+      </div>
       </div>
     </div>
     {/if}
 
-    {#if activeVideoMedia}
-      <div use:portalToBody class="fixed inset-0 z-120 overflow-y-auto bg-black/70 px-4 py-4 backdrop-blur-sm sm:py-8" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) activeVideoMedia = null; }}>
+    {#if activeGalleryItem}
+      <div use:portalToBody class="fixed inset-0 z-120 overflow-y-auto bg-black/72 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) activeGalleryIndex = null; }}>
         <div class="flex min-h-full items-start justify-center sm:items-center">
-        <div class="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-4xl border border-white/10 bg-ocean-950/96 shadow-[0_36px_120px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-4rem)]">
+        <div class="flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-4xl border border-white/10 bg-ocean-950/96 shadow-[0_36px_120px_rgba(0,0,0,0.58)] sm:max-h-[calc(100vh-3rem)]">
           <div class="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
             <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Video playback</p>
-              <h4 class="mt-2 text-xl font-semibold text-white">{activeVideoMedia.original_filename}</h4>
-              <p class="mt-1 text-sm text-ocean-100/68">{formatBytes(activeVideoMedia.byte_size)} • {activeVideoMedia.mime_type}{#if activeVideoMedia.duration_ms} • {Math.round(Number(activeVideoMedia.duration_ms) / 1000)}s{/if}</p>
+              <p class="text-xs font-semibold uppercase tracking-[0.22em] text-ocean-300/75">Story media</p>
+              <h4 class="mt-2 text-xl font-semibold text-white">{activeGalleryItem.title}</h4>
+              <p class="mt-1 text-sm text-ocean-100/68">{activeGalleryItem.detail}</p>
             </div>
-            <button type="button" class="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12" onclick={() => activeVideoMedia = null}>
-              Close
-            </button>
+            <div class="flex items-center gap-2">
+              {#if galleryMediaItems.length > 1}
+                <span class="hidden rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-ocean-100/72 sm:inline-flex">{(activeGalleryIndex ?? 0) + 1} / {galleryMediaItems.length}</span>
+              {/if}
+              <button type="button" class="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12" onclick={() => activeGalleryIndex = null}>
+                Close
+              </button>
+            </div>
           </div>
 
-          <div class="min-h-0 overflow-y-auto p-4 sm:p-6">
-            <JournalVideoPlayer assetId={activeVideoMedia.id} title={activeVideoMedia.original_filename} posterUrl={activeVideoMedia.poster_url} />
+          <div class="relative min-h-0 overflow-y-auto">
+            {#if galleryMediaItems.length > 1}
+              <button type="button" class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/14 bg-black/35 px-4 py-3 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-black/48 sm:left-5" onclick={() => stepGallery(-1)} aria-label="Previous media">
+                Prev
+              </button>
+              <button type="button" class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/14 bg-black/35 px-4 py-3 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-black/48 sm:right-5" onclick={() => stepGallery(1)} aria-label="Next media">
+                Next
+              </button>
+            {/if}
+
+            {#if activeGalleryItem.media.kind === MediaKind.Video}
+              <div class="min-h-0 overflow-y-auto p-4 sm:p-6">
+                <JournalVideoPlayer assetId={activeGalleryItem.media.id} title={activeGalleryItem.media.original_filename} posterUrl={activeGalleryItem.media.poster_url} />
+              </div>
+            {:else}
+              <div class="flex max-h-[calc(100vh-9rem)] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(60,168,244,0.12),transparent_36%),linear-gradient(180deg,rgba(4,10,20,0.88),rgba(4,10,20,0.96))] p-3 sm:p-6">
+                <img src={activeGalleryItem.media.image_url ?? undefined} alt={activeGalleryItem.alt} class="max-h-[calc(100vh-12rem)] w-auto max-w-full rounded-3xl object-contain shadow-[0_28px_90px_rgba(0,0,0,0.45)]" />
+              </div>
+            {/if}
           </div>
         </div>
         </div>

@@ -14,7 +14,7 @@
     type FertilizerInput,
     type SolutionElements,
   } from "../lib/calculatorEngine";
-  import { buildCalculatorReport, saveCalculatorReportPdf } from "../lib/calculatorPdf";
+  import { saveCalculatorReportPdf } from "../lib/calculatorPdf";
   import { fertilizerCardFromRpc } from "../lib/catalogData";
   import { getNscalcRpc } from "../lib/nscalcRpc";
   import { getCalculatorBootstrapCached, listFertilizersPageCached, listSolutionsPageCached } from "../lib/catalogRpcCache";
@@ -574,6 +574,40 @@
     return `$${value.toFixed(2)}`;
   }
 
+  function bottleLabel(bottle: nscalc.FertilizerBottle): string {
+    return bottle === nscalc.FertilizerBottle.A ? "Tank A" : bottle === nscalc.FertilizerBottle.B ? "Tank B" : "Tank C";
+  }
+
+  function bottleBadgeClass(bottle: nscalc.FertilizerBottle | null | undefined): string {
+    if (bottle === nscalc.FertilizerBottle.B) {
+      return "border-emerald-300/30 bg-emerald-400/14 text-emerald-100";
+    }
+    if (bottle === nscalc.FertilizerBottle.C) {
+      return "border-rose-300/30 bg-rose-400/14 text-rose-100";
+    }
+    return "border-sand-200/35 bg-sand-200/12 text-sand-50";
+  }
+
+  function selectedBottleCardClass(bottle: nscalc.FertilizerBottle | null | undefined, formula?: string | null): string {
+    if (bottle === nscalc.FertilizerBottle.B) {
+      return "border-emerald-300/35 bg-[linear-gradient(180deg,rgba(16,185,129,0.12),rgba(255,255,255,0.06))]";
+    }
+    if (bottle === nscalc.FertilizerBottle.C) {
+      return "border-rose-300/35 bg-[linear-gradient(180deg,rgba(251,113,133,0.12),rgba(255,255,255,0.06))]";
+    }
+    return "border-sand-200/35 bg-[linear-gradient(180deg,rgba(234,208,162,0.12),rgba(255,255,255,0.06))]";
+  }
+
+  function remainingBottleCardClass(bottle: nscalc.FertilizerBottle | null | undefined, formula?: string | null): string {
+    if (bottle === nscalc.FertilizerBottle.B) {
+      return "border-emerald-300/22 bg-emerald-950/18 hover:bg-emerald-400/10";
+    }
+    if (bottle === nscalc.FertilizerBottle.C) {
+      return "border-rose-300/22 bg-rose-950/16 hover:bg-rose-400/10";
+    }
+    return "border-sand-200/22 bg-sand-200/8 hover:bg-sand-200/12";
+  }
+
   function formatRatio(value: number): string {
     return value === 0 ? "0.00" : value.toFixed(2);
   }
@@ -594,12 +628,12 @@
 
     exportBusy = true;
     try {
-      const report = buildCalculatorReport({
+      const report = {
         solutionName: calculationName.trim() || selectedSolution?.name || "Custom calculation",
         volumeLiters,
         rows: selectedFertilizerRows.map((row) => ({
           name: row.fertilizer.name,
-          bottle: row.fertilizer.bottle,
+          bottle: row.fertilizerCard.bottle,
           type: row.fertilizer.type,
           density: row.fertilizer.density,
           gramsPerLiter: row.gramsPerLiter,
@@ -615,7 +649,7 @@
         totalMixed: mixedTotal,
         ratio: mixRatio,
         estimatedCost,
-      });
+      };
       await saveCalculatorReportPdf(report, `${(calculationName.trim() || selectedSolution?.name || "custom-calculation").replace(/\s+/g, "-")}-recipe.pdf`);
       solverMessage = "PDF report downloaded.";
     } catch (error) {
@@ -922,10 +956,11 @@
           {/if}
 
           {#each combinedFertilizerList.selected as row}
-            <div class="grid gap-3 rounded-[1.4rem] border border-sand-200/35 bg-white/8 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_8rem_auto] xl:items-end">
+            <div class={`grid gap-3 rounded-[1.4rem] border p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_8rem_auto] xl:items-end ${selectedBottleCardClass(row.fertilizerCard.bottle, row.fertilizer.formula)}`}>
               <div class="min-w-0 sm:col-span-2 xl:col-span-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="wrap-break-word font-semibold text-white">{row.fertilizer.name}</p>
+                  <span class={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${bottleBadgeClass(row.fertilizerCard.bottle)}`}>{bottleLabel(row.fertilizerCard.bottle)}</span>
                   <span class="rounded-full border border-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-ocean-100/75">Selected</span>
                 </div>
                 <p class="mt-1 wrap-break-word text-xs uppercase tracking-[0.16em] text-ocean-200/60">{row.fertilizer.userName} • {calculatorMode === "auto" ? "engine" : "manual"}</p>
@@ -949,13 +984,16 @@
           {/each}
 
           {#each combinedFertilizerList.remaining as fertilizer}
-            <button type="button" class="w-full rounded-[1.4rem] border border-white/10 bg-black/18 px-4 py-4 text-left transition hover:bg-white/6" onclick={() => toggleFertilizer(fertilizer.id)}>
+            <button type="button" class={`w-full rounded-[1.4rem] border px-4 py-4 text-left transition ${remainingBottleCardClass(fertilizer.bottle, fertilizer.formula)}`} onclick={() => toggleFertilizer(fertilizer.id)}>
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="font-semibold text-white">{fertilizer.name}</p>
                   <p class="mt-1 text-xs uppercase tracking-[0.16em] text-ocean-200/60">{fertilizer.userName}</p>
                 </div>
-                <span class="rounded-full border border-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-ocean-100/75">{formatMoney(fertilizer.cost)}</span>
+                <div class="flex flex-col items-end gap-2">
+                  <span class={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${bottleBadgeClass(fertilizer.bottle)}`}>{bottleLabel(fertilizer.bottle)}</span>
+                  <span class="rounded-full border border-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-ocean-100/75">{formatMoney(fertilizer.cost)}</span>
+                </div>
               </div>
             </button>
           {/each}
@@ -1020,7 +1058,7 @@
     </div>
   </div>
 
-  <section class="rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6">
+  <section class="hidden rounded-[1.75rem] border border-white/10 bg-black/12 p-5 sm:p-6 md:block">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.25em] text-ocean-300">Solution matrix</p>
