@@ -7,14 +7,11 @@ MEDIA_ROOT="$ROOT_DIR/sample_data/grow_journal_media"
 PUBLIC_ROOT="${1:-$ROOT_DIR/new_client/dist}"
 ASSET_ROOT="$PUBLIC_ROOT/mock/journal/assets"
 
-link_or_copy() {
+copy_asset() {
     local source_path="$1"
     local destination_path="$2"
 
     rm -f "$destination_path"
-    if ln -s "$source_path" "$destination_path" 2>/dev/null; then
-        return 0
-    fi
     cp "$source_path" "$destination_path"
 }
 
@@ -53,7 +50,7 @@ if [ -d "$MEDIA_ROOT/original" ]; then
 
         target_dir="$ASSET_ROOT/$asset_id"
         mkdir -p "$target_dir"
-        link_or_copy "$source_file" "$target_dir/image"
+        copy_asset "$source_file" "$target_dir/image"
     done < <(find "$MEDIA_ROOT/original" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
 fi
 
@@ -64,13 +61,13 @@ if [ -d "$MEDIA_ROOT/processed" ]; then
         mkdir -p "$target_dir"
 
         if [ -f "$asset_dir/poster.jpg" ]; then
-            link_or_copy "$asset_dir/poster.jpg" "$target_dir/poster.jpg"
+            copy_asset "$asset_dir/poster.jpg" "$target_dir/poster.jpg"
         fi
 
         if [ -f "$asset_dir/adaptive.mpd" ]; then
-            link_or_copy "$asset_dir/adaptive.mpd" "$target_dir/manifest.mpd"
+            copy_asset "$asset_dir/adaptive.mpd" "$target_dir/manifest.mpd"
         elif [ -f "$asset_dir/manifest.mpd" ]; then
-            link_or_copy "$asset_dir/manifest.mpd" "$target_dir/manifest.mpd"
+            copy_asset "$asset_dir/manifest.mpd" "$target_dir/manifest.mpd"
         fi
     done < <(find "$MEDIA_ROOT/processed" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
 fi

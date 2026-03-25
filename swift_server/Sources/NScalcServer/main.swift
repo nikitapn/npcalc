@@ -282,9 +282,12 @@ do {
     print("Database opened: \(config.dbPath)")
 
     let httpBuilder = RpcBuilder()
-        .setLogLevel(.warn)
+        .setLogLevel(.info)
         .withHostname(config.hostname)
         .withHttp(config.httpPort)
+        .maxRequestBodySize(6 * 1024 * 1024)
+        .maxWebSocketMessageSize(6 * 1024 * 1024)
+        .maxWebTransportMessageSize(6 * 1024 * 1024)
 
     if config.useSsl {
         httpBuilder.ssl(

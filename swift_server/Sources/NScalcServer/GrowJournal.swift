@@ -36,7 +36,7 @@ private final class GrowJournalPublicAssetPublisher {
         }
 
         let publicAssetDirectoryURL = try preparePublicAssetDirectory(assetId: assetId)
-        try replaceWithLinkOrCopy(sourceURL: sourceURL, destinationURL: publicAssetDirectoryURL.appendingPathComponent("image"))
+        try replaceWithCopy(sourceURL: sourceURL, destinationURL: publicAssetDirectoryURL.appendingPathComponent("image"))
     }
 
     func hasImageAsset(assetId: UInt64) -> Bool {
@@ -53,9 +53,9 @@ private final class GrowJournalPublicAssetPublisher {
         let legacyManifestURL = processedDirectoryURL.appendingPathComponent("manifest.mpd")
         let publicManifestURL = publicAssetDirectoryURL.appendingPathComponent("manifest.mpd")
         if fileManager.fileExists(atPath: adaptiveManifestURL.path) {
-            try replaceWithLinkOrCopy(sourceURL: adaptiveManifestURL, destinationURL: publicManifestURL)
+            try replaceWithCopy(sourceURL: adaptiveManifestURL, destinationURL: publicManifestURL)
         } else if fileManager.fileExists(atPath: legacyManifestURL.path) {
-            try replaceWithLinkOrCopy(sourceURL: legacyManifestURL, destinationURL: publicManifestURL)
+            try replaceWithCopy(sourceURL: legacyManifestURL, destinationURL: publicManifestURL)
         } else {
             try removeIfExists(publicManifestURL)
         }
@@ -63,7 +63,7 @@ private final class GrowJournalPublicAssetPublisher {
         let posterURL = processedDirectoryURL.appendingPathComponent("poster.jpg")
         let publicPosterURL = publicAssetDirectoryURL.appendingPathComponent("poster.jpg")
         if fileManager.fileExists(atPath: posterURL.path) {
-            try replaceWithLinkOrCopy(sourceURL: posterURL, destinationURL: publicPosterURL)
+            try replaceWithCopy(sourceURL: posterURL, destinationURL: publicPosterURL)
         } else {
             try removeIfExists(publicPosterURL)
         }
@@ -101,13 +101,9 @@ private final class GrowJournalPublicAssetPublisher {
             .first
     }
 
-    private func replaceWithLinkOrCopy(sourceURL: URL, destinationURL: URL) throws {
+    private func replaceWithCopy(sourceURL: URL, destinationURL: URL) throws {
         try removeIfExists(destinationURL)
-        do {
-            try fileManager.createSymbolicLink(at: destinationURL, withDestinationURL: sourceURL)
-        } catch {
-            try fileManager.copyItem(at: sourceURL, to: destinationURL)
-        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
     }
 
     private func removeIfExists(_ url: URL) throws {

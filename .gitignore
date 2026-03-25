@@ -12,3 +12,4 @@ certs/
 /deploy.sh
 /.private
 /nginx_config
+/.chromium-data

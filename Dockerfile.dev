@@ -1,7 +1,7 @@
 # ============================================================================
 # Stage 1: Build sqlite3 with snapshot support
 # ============================================================================
-FROM swift:6.2.3 AS sqlite3-builder
+FROM swift:6.2.4 AS sqlite3-builder
 
 # Build SQLite from the amalgamation with SQLITE_ENABLE_SNAPSHOT enabled.
 # The Ubuntu package omits this flag, which causes GRDB's WALSnapshot to fail
@@ -36,8 +36,6 @@ RUN set -e \
 FROM nprpc-dev:latest AS nscalc-builder
 
 USER root
-
-RUN apt-get update && apt-get install -y ffmpeg gpac && rm -rf /var/lib/apt/lists/*
 
 # Install GRDB's SQLite dependency with snapshot support, since the default Ubuntu package doesn't have it.
 COPY --from=sqlite3-builder /usr/lib/x86_64-linux-gnu/libsqlite3.so* /usr/lib/x86_64-linux-gnu/

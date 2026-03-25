@@ -101,6 +101,8 @@ DOCKER_CMD=(
     docker run --rm -it
     --user "$(id -u):$(id -g)"
     --name nscalc-swift
+    --cap-add=NET_ADMIN
+    --cap-add=BPF
 
     # Mount project sub-trees the server needs at runtime
     -v "$ROOT_DIR/swift_server":/app/swift_server:ro
