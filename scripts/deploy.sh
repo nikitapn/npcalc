@@ -15,6 +15,7 @@ CERT_DIR="/etc/letsencrypt"
 PUBLIC_KEY="/certs/live/nikitapn.com/fullchain.pem"
 PRIVATE_KEY="/certs/live/nikitapn.com/privkey.pem"
 DH_PARAMS=""
+CERT_WATCH_INTERVAL=""
 SHM_C2S="/dev/shm/nprpc_nscalc_ingress_c2s"
 SHM_S2C="/dev/shm/nprpc_quic_edge_s2c"
 # RAG Model configuration
@@ -37,12 +38,27 @@ Usage: ./deploy.sh --ssh user@server --hostname calc.example.com --cert-dir /pat
   --public-key <path>         Certificate path inside the container (default: /certs/fullchain.pem)
   --private-key <path>        Private key path inside the container (default: /certs/privkey.pem)
   --dh-params <path>          DH params path inside the container
+  --cert-watch-interval <secs>  Poll the mounted certificate every <secs> and reload it
+                              in-process when it changes (default: unset = no polling).
+                              Independent of the SIGHUP hook below, which always works.
   --shm-c2s <path>            Host shared-memory file for QUIC client->server traffic
   --shm-s2c <path>            Host shared-memory file for QUIC server->client traffic
   --ollama-model <name>       Ollama model name (default: gemma4)
 
 The production container is started with CAP_NET_ADMIN and CAP_BPF so NPRPC can
 install the eBPF SO_REUSEPORT selector required by multi-worker HTTP/3.
+
+--cert-dir is mounted read-only at /certs, so certbot renewing on the host is
+visible inside the container straight away.  Mount the whole /etc/letsencrypt
+tree rather than just live/: certbot's live/*.pem are relative symlinks into
+../../archive/, which dangle if only live/ is mounted.
+
+To pick a renewal up without a restart, have certbot signal the container:
+
+  certbot certonly --webroot -w /var/www/acme -d <hostname> \
+    --deploy-hook 'docker kill -s HUP <container>'
+
+The server reloads TLS certificates on SIGHUP without dropping connections.
 EOF
 }
 
@@ -90,6 +106,10 @@ while [ $# -gt 0 ]; do
       ;;
     --dh-params)
       DH_PARAMS="$2"
+      shift
+      ;;
+    --cert-watch-interval)
+      CERT_WATCH_INTERVAL="$2"
       shift
       ;;
     --shm-c2s)
@@ -145,6 +165,7 @@ ssh "$SSH_TARGET" \
   CERT_DIR="$CERT_DIR" \
   CONTAINER_NAME="$CONTAINER_NAME" \
   DH_PARAMS="$DH_PARAMS" \
+  CERT_WATCH_INTERVAL="$CERT_WATCH_INTERVAL" \
   HOSTNAME="$HOSTNAME" \
   IMAGE_NAME="$IMAGE_NAME" \
   PORT="$PORT" \
@@ -205,9 +226,18 @@ if [ -n "$DH_PARAMS" ]; then
   DOCKER_ARGS+=( -e "NSCALC_DH_PARAMS=$DH_PARAMS" )
 fi
 
+if [ -n "$CERT_WATCH_INTERVAL" ]; then
+  DOCKER_ARGS+=( -e "NSCALC_CERT_WATCH_INTERVAL=$CERT_WATCH_INTERVAL" )
+fi
+
 docker "${DOCKER_ARGS[@]}" "$IMAGE_NAME"
 
 rm -f "$REMOTE_TMP_DIR.tar.gz"
 EOF
 
 echo "Deployment complete: https://$HOSTNAME:$PORT"
+echo
+echo "Certificate renewal: point certbot's deploy hook at this container so a"
+echo "renewal is reloaded without a restart:"
+echo
+echo "  --deploy-hook 'docker kill -s HUP $CONTAINER_NAME'"

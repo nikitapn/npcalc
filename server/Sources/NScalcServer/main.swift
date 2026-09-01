@@ -19,6 +19,7 @@ struct ServerConfig {
     let publicKeyPath: String?
     let privateKeyPath: String?
     let dhParamsPath: String?
+    let certWatchIntervalSeconds: UInt32
     let ollamaHost: String?
     let ollamaModel: String?
     let ollamaTimeoutSeconds: TimeInterval
@@ -99,6 +100,10 @@ private func printUsage() {
       --public-key <path>     TLS certificate path
       --private-key <path>    TLS private key path
       --dh-params <path>      Optional DH params path
+      --cert-watch-interval <secs>  Poll the certificate and key every <secs> and reload them
+                              in-process when they change on disk, so a certbot renewal is
+                              picked up without a restart. 0 (default) disables polling;
+                              SIGHUP always reloads on demand regardless of this setting.
       --ollama-host <url>     Ollama server base URL for the AI assistant (default: http://localhost:11434)
       --ollama-model <name>   Ollama model to use for the AI assistant (must support tool calling, e.g. llama3.1, qwen2.5). If unset, the assistant feature is disabled.
       --ollama-timeout <secs> Per-request timeout in seconds for Ollama calls (default: 120)
@@ -134,6 +139,7 @@ private func parseServerConfig() throws -> ServerConfig {
     var publicKeyPath = env["NSCALC_PUBLIC_KEY"]
     var privateKeyPath = env["NSCALC_PRIVATE_KEY"]
     var dhParamsPath = env["NSCALC_DH_PARAMS"]
+    var certWatchIntervalSeconds = UInt32(env["NSCALC_CERT_WATCH_INTERVAL"] ?? "0") ?? 0
     var ollamaHost = env["NSCALC_OLLAMA_HOST"]
     var ollamaModel = env["NSCALC_OLLAMA_MODEL"]
     var ollamaTimeoutSeconds = TimeInterval(env["NSCALC_OLLAMA_TIMEOUT"] ?? "120") ?? 120
@@ -193,6 +199,12 @@ private func parseServerConfig() throws -> ServerConfig {
             privateKeyPath = try optionValue(option, inlineValue: inlineValue, index: &index, args: args)
         case "--dh-params":
             dhParamsPath = try optionValue(option, inlineValue: inlineValue, index: &index, args: args)
+        case "--cert-watch-interval":
+            let value = try optionValue(option, inlineValue: inlineValue, index: &index, args: args)
+            guard let parsedInterval = UInt32(value) else {
+                throw ServerConfigError.invalidValue(option, value)
+            }
+            certWatchIntervalSeconds = parsedInterval
         case "--ollama-host":
             ollamaHost = try optionValue(option, inlineValue: inlineValue, index: &index, args: args)
         case "--ollama-model":
@@ -244,6 +256,7 @@ private func parseServerConfig() throws -> ServerConfig {
         publicKeyPath: publicKeyPath,
         privateKeyPath: privateKeyPath,
         dhParamsPath: dhParamsPath,
+        certWatchIntervalSeconds: certWatchIntervalSeconds,
         ollamaHost: ollamaHost,
         ollamaModel: ollamaModel,
         ollamaTimeoutSeconds: ollamaTimeoutSeconds,
@@ -363,6 +376,9 @@ do {
             keyFile: config.privateKeyPath!,
             dhparamsFile: config.dhParamsPath ?? ""
         )
+        if config.certWatchIntervalSeconds > 0 {
+            httpBuilder.watchCertificates(intervalSeconds: config.certWatchIntervalSeconds)
+        }
         activationFlags.insert([.wss, .https, .wt])
     }
     if config.enableHttp3 {
@@ -453,11 +469,40 @@ do {
         print("Activated AssistantService with oid: \(assistantOid)")
         print("host.json: \(hostJsonPath)")
     }
+    // Reload TLS certificates on SIGHUP, so a certbot renewal is picked up
+    // without dropping connections.  Deliver it from certbot's --deploy-hook
+    // with `docker kill -s HUP <container>`.
+    //
+    // The source has to be held for the process lifetime — a DispatchSource
+    // that goes out of scope stops delivering.  SIG_IGN is required so the
+    // default action (terminate) does not kill us before the source runs.
+    let certReloadSource: DispatchSourceSignal? = {
+        guard config.useSsl else { return nil }
+        let source = DispatchSource.makeSignalSource(signal: SIGHUP, queue: .main)
+        source.setEventHandler {
+            if rpc.reloadCertificates() {
+                print("Received SIGHUP, TLS certificates reloaded")
+            } else {
+                print("Received SIGHUP, certificate reload FAILED — still serving the previous certificate")
+            }
+            // stdout is block-buffered when it is not a TTY and this process
+            // never exits normally, so without an explicit flush the result
+            // above never reaches `docker logs`.  fflush(nil) flushes every
+            // open stream — `stdout` itself cannot be named here, being a
+            // shared mutable global under Swift 6 concurrency checking.
+            fflush(nil)
+        }
+        signal(SIGHUP, SIG_IGN)
+        source.resume()
+        return source
+    }()
+
     // Set up signal handling for graceful shutdown
     let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
     signalSource.setEventHandler {
         print("\n")
         print("Received SIGINT, shutting down...")
+        certReloadSource?.cancel()
         rpc.stop()
         exit(0)
     }

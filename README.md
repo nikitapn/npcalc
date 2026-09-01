@@ -122,14 +122,48 @@ All dev and deployment scripts live in `scripts/`:
 ./scripts/deploy.sh \
     --ssh debian@your-vps \
     --hostname calc.example.com \
-    --cert-dir /etc/letsencrypt/live/calc.example.com \
+    --cert-dir /etc/letsencrypt \
+    --public-key /certs/live/calc.example.com/fullchain.pem \
+    --private-key /certs/live/calc.example.com/privkey.pem \
     --dh-params /certs/ssl-dhparams.pem \
     --port 443
 ```
 
 The production image is based on `swift:6.3.0-slim`. State (SQLite database) is
 persisted from `/opt/nscalc/data` on the VPS; TLS certificates are mounted
-read-only from `--cert-dir`.
+read-only from `--cert-dir` at `/certs`.
+
+Point `--cert-dir` at the whole `/etc/letsencrypt` tree, not at
+`live/<domain>`. certbot's `live/*.pem` are relative symlinks into
+`../../archive/`, so mounting only `live/<domain>` puts the symlinks in the
+container with their targets left outside it — they resolve to nothing and
+the server fails to read its certificate. `--public-key` / `--private-key`
+are then paths *inside* the container, under `/certs/live/<domain>/`.
+
+### Certificate renewal
+
+The server reloads TLS certificates on `SIGHUP` without dropping connections,
+so a renewal needs no restart. Because `/etc/letsencrypt` is mounted, certbot
+renewing on the host is visible in the container immediately; all the deploy
+hook has to do is signal it:
+
+```bash
+certbot certonly --webroot -w /var/www/acme \
+    -d calc.example.com \
+    --deploy-hook 'docker kill -s HUP nscalc-swift'
+```
+
+`certbot renew` reuses the hook recorded at issuance, so the renewal timer
+needs no further configuration.
+
+If naming the container in a hook is awkward, `--cert-watch-interval <secs>`
+makes the server poll the mounted certificate instead and reload when it
+changes — nothing then has to cross the container boundary. The two are
+independent; setting both is fine, since a reload that finds unchanged files
+does nothing.
+
+See `../nprpc/docs/certbot.md` for the ACME setup on the router side and the
+details of what reload does to each transport.
 
 ## Development Tips
 

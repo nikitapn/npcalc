@@ -30,6 +30,9 @@ if [ "${NSCALC_USE_SSL:-1}" = "1" ]; then
     if [ -n "${NSCALC_DH_PARAMS:-}" ]; then
         ARGS+=(--dh-params "$NSCALC_DH_PARAMS")
     fi
+    if [ -n "${NSCALC_CERT_WATCH_INTERVAL:-}" ]; then
+        ARGS+=(--cert-watch-interval "$NSCALC_CERT_WATCH_INTERVAL")
+    fi
 fi
 
 exec /app/NScalcServer "${ARGS[@]}"
